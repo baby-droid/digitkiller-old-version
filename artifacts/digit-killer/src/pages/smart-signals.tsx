@@ -30,9 +30,12 @@ type GeneratedSignal = {
   marketName: string;
   category: MarketCategory;
   tradeType: string;
+  subLabel?: string;
   entryDigit: string;
   ticks: string;
   confidence: number;
+  risk: "Low" | "Medium" | "High";
+  contractGroup: string;
   generatedAt: number;
   validUntil: number;
   theme: number;
@@ -54,13 +57,13 @@ function generateSignals(marketsData: Record<string, { digits: number[]; lastDig
     const total = Math.min(data.digits.length, 100);
     const pct = freqs.map((f) => (f / total) * 100);
 
-    const maxPct = Math.max(...pct);
-    const minPct = Math.min(...pct);
-    const maxDigit = pct.indexOf(maxPct);
-    const minDigit = pct.indexOf(minPct);
-    const evenPct = [0, 2, 4, 6, 8].reduce((s, d) => s + pct[d], 0);
-    const oddPct  = [1, 3, 5, 7, 9].reduce((s, d) => s + pct[d], 0);
-    const overPct = [5, 6, 7, 8, 9].reduce((s, d) => s + pct[d], 0);
+    const maxPct    = Math.max(...pct);
+    const minPct    = Math.min(...pct);
+    const maxDigit  = pct.indexOf(maxPct);
+    const minDigit  = pct.indexOf(minPct);
+    const evenPct   = [0, 2, 4, 6, 8].reduce((s, d) => s + pct[d], 0);
+    const oddPct    = [1, 3, 5, 7, 9].reduce((s, d) => s + pct[d], 0);
+    const overPct   = [5, 6, 7, 8, 9].reduce((s, d) => s + pct[d], 0);
 
     const base = {
       market: symbol,
@@ -69,33 +72,98 @@ function generateSignals(marketsData: Record<string, { digits: number[]; lastDig
       generatedAt: now,
       validUntil: now + SIGNAL_VALIDITY_MS,
     };
-    const nextTheme = (): 1|2|3|4|5 => (((themeCounter++) % 5) + 1) as 1|2|3|4|5;
+    const nt = (): 1|2|3|4|5 => (((themeCounter++) % 5) + 1) as 1|2|3|4|5;
+    const push = (o: Omit<GeneratedSignal, "market"|"marketName"|"category"|"generatedAt"|"validUntil">) =>
+      signals.push({ ...base, ...o });
 
+    // ── EVEN · ODD · MATCHES · DIFFERS ───────────────────────────────────────
     if (maxPct > 14)
-      signals.push({ ...base, id: `${symbol}-match`, theme: nextTheme(), tradeType: "MATCHES", entryDigit: `Digit ${maxDigit}`, ticks: "1 tick", confidence: Math.min(85, 60 + maxPct * 1.5), reason: `Digit ${maxDigit} at ${maxPct.toFixed(1)}% of last 100 ticks` });
+      push({ id: `${symbol}-match`, theme: nt(), tradeType: "MATCHES", entryDigit: `Digit ${maxDigit}`, ticks: "1 tick", risk: "Low", contractGroup: "Digit Types", confidence: Math.min(85, 60 + maxPct * 1.5), reason: `Digit ${maxDigit} at ${maxPct.toFixed(1)}% of last 100 ticks — statistically hot` });
 
     if (minPct < 7)
-      signals.push({ ...base, id: `${symbol}-differ`, theme: nextTheme(), tradeType: "DIFFERS", entryDigit: `Digit ${minDigit}`, ticks: "1 tick", confidence: Math.min(82, 55 + (10 - minPct) * 2), reason: `Digit ${minDigit} only ${minPct.toFixed(1)}% — statistically cold` });
+      push({ id: `${symbol}-differ`, theme: nt(), tradeType: "DIFFERS", entryDigit: `Digit ${minDigit}`, ticks: "1 tick", risk: "Low", contractGroup: "Digit Types", confidence: Math.min(82, 55 + (10 - minPct) * 2), reason: `Digit ${minDigit} only ${minPct.toFixed(1)}% — statistically cold` });
 
     if (evenPct > 54)
-      signals.push({ ...base, id: `${symbol}-even`, theme: nextTheme(), tradeType: "EVEN", entryDigit: "Any odd digit now", ticks: "1 tick", confidence: Math.min(78, 50 + evenPct - 50), reason: `Even digits at ${evenPct.toFixed(1)}% frequency` });
+      push({ id: `${symbol}-even`, theme: nt(), tradeType: "EVEN", entryDigit: "Even digit entry", ticks: "1 tick", risk: "Low", contractGroup: "Digit Types", confidence: Math.min(78, 50 + evenPct - 50), reason: `Even digits at ${evenPct.toFixed(1)}% frequency` });
     else if (oddPct > 54)
-      signals.push({ ...base, id: `${symbol}-odd`, theme: nextTheme(), tradeType: "ODD", entryDigit: "Any even digit now", ticks: "1 tick", confidence: Math.min(78, 50 + oddPct - 50), reason: `Odd digits at ${oddPct.toFixed(1)}% frequency` });
+      push({ id: `${symbol}-odd`, theme: nt(), tradeType: "ODD", entryDigit: "Odd digit entry", ticks: "1 tick", risk: "Low", contractGroup: "Digit Types", confidence: Math.min(78, 50 + oddPct - 50), reason: `Odd digits at ${oddPct.toFixed(1)}% frequency` });
 
-    if (overPct > 55)
-      signals.push({ ...base, id: `${symbol}-over`, theme: nextTheme(), tradeType: overPct > 60 ? "OVER 4" : "OVER 5", entryDigit: "Digits 2–4", ticks: "2–3 ticks", confidence: Math.min(80, 55 + overPct - 55), reason: `High digits 5–9 dominant at ${overPct.toFixed(1)}%` });
+    // ── OVER / UNDER ──────────────────────────────────────────────────────────
+    if (overPct > 60)
+      push({ id: `${symbol}-over4`, theme: nt(), tradeType: "OVER 4", entryDigit: "Digits 2–4", ticks: "2–3 ticks", risk: "Medium", contractGroup: "Over / Under", confidence: Math.min(85, 55 + overPct - 55), reason: `High digits 5–9 very dominant at ${overPct.toFixed(1)}%` });
+    else if (overPct > 55)
+      push({ id: `${symbol}-over5`, theme: nt(), tradeType: "OVER 5", entryDigit: "Digits 2–4", ticks: "2–3 ticks", risk: "Medium", contractGroup: "Over / Under", confidence: Math.min(80, 55 + overPct - 55), reason: `High digits 5–9 dominant at ${overPct.toFixed(1)}%` });
+
+    if (overPct < 40)
+      push({ id: `${symbol}-under4`, theme: nt(), tradeType: "UNDER 4", entryDigit: "Digits 5–7", ticks: "2–3 ticks", risk: "Medium", contractGroup: "Over / Under", confidence: Math.min(85, 55 + (45 - overPct)), reason: `Low digits 0–4 very dominant — over ${(100 - overPct).toFixed(1)}%` });
     else if (overPct < 45)
-      signals.push({ ...base, id: `${symbol}-under`, theme: nextTheme(), tradeType: overPct < 40 ? "UNDER 4" : "UNDER 5", entryDigit: "Digits 6–8", ticks: "2–3 ticks", confidence: Math.min(80, 55 + (45 - overPct)), reason: `Low digits 0–4 dominant` });
+      push({ id: `${symbol}-under5`, theme: nt(), tradeType: "UNDER 5", entryDigit: "Digits 5–7", ticks: "2–3 ticks", risk: "Medium", contractGroup: "Over / Under", confidence: Math.min(80, 55 + (45 - overPct)), reason: `Low digits 0–4 dominant` });
 
+    if (pct[0] < 7 && pct[1] < 7)
+      push({ id: `${symbol}-over1`, theme: nt(), tradeType: "OVER 1", entryDigit: "Digits 0–1", ticks: "1–2 ticks", risk: "Low", contractGroup: "Over / Under", confidence: 72, reason: `Digits 0–1 underrepresented at ${(pct[0]+pct[1]).toFixed(1)}%` });
+
+    if (pct[8] < 7 && pct[9] < 7)
+      push({ id: `${symbol}-under9`, theme: nt(), tradeType: "UNDER 9", entryDigit: "Digits 8–9", ticks: "1–2 ticks", risk: "Low", contractGroup: "Over / Under", confidence: 70, reason: `Digits 8–9 underrepresented at ${(pct[8]+pct[9]).toFixed(1)}%` });
+
+    if (pct[9] > 14)
+      push({ id: `${symbol}-over8`, theme: nt(), tradeType: "OVER 8", entryDigit: "Digits 6–7", ticks: "1–2 ticks", risk: "Low", contractGroup: "Over / Under", confidence: Math.min(82, 55 + (pct[9] - 10) * 2), reason: `Digit 9 at ${pct[9].toFixed(1)}% — very high frequency` });
+
+    // ── RISE / FALL ───────────────────────────────────────────────────────────
+    const recent8 = data.digits.slice(-8);
+    let riseTrend = 0;
+    recent8.forEach((d, i) => { if (i > 0 && d >= recent8[i - 1]) riseTrend++; });
+    const fallTrend = recent8.length - 1 - riseTrend;
+
+    if (riseTrend >= 6)
+      push({ id: `${symbol}-rise`, theme: nt(), tradeType: "RISE", entryDigit: "Current price", ticks: "5 ticks", risk: "Medium", contractGroup: "Rise / Fall", confidence: Math.min(80, 60 + riseTrend * 3), reason: `${riseTrend}/7 last digits rising — bullish momentum` });
+    if (fallTrend >= 6)
+      push({ id: `${symbol}-fall`, theme: nt(), tradeType: "FALL", entryDigit: "Current price", ticks: "5 ticks", risk: "Medium", contractGroup: "Rise / Fall", confidence: Math.min(80, 60 + fallTrend * 3), reason: `${fallTrend}/7 last digits falling — bearish momentum` });
+
+    // ── HIGH TICK / LOW TICK ──────────────────────────────────────────────────
     const recent5 = data.digits.slice(-5);
-    const risingCount = recent5.filter((d, i) => i > 0 && d >= recent5[i - 1]).length;
-    if (risingCount >= 4)
-      signals.push({ ...base, id: `${symbol}-rise`, theme: nextTheme(), tradeType: "RISE", entryDigit: "Current price", ticks: "5 ticks", confidence: 70, reason: `4/5 recent digits rising — bullish` });
-    else if (risingCount <= 1)
-      signals.push({ ...base, id: `${symbol}-fall`, theme: nextTheme(), tradeType: "FALL", entryDigit: "Current price", ticks: "5 ticks", confidence: 70, reason: `4/5 recent digits falling — bearish` });
+    if (recent5.length === 5) {
+      const maxR = Math.max(...recent5);
+      const minR = Math.min(...recent5);
+      push({ id: `${symbol}-high`, theme: nt(), tradeType: "HIGH TICK", entryDigit: `Digit ${maxR}`, ticks: "5 ticks", risk: "Medium", contractGroup: "High / Low Tick", confidence: Math.min(75, 60 + (pct[maxR] > 12 ? 15 : pct[maxR] > 10 ? 8 : 0)), reason: `Digit ${maxR} is period high — ${pct[maxR].toFixed(1)}% frequency` });
+      push({ id: `${symbol}-low`, theme: nt(), tradeType: "LOW TICK", entryDigit: `Digit ${minR}`, ticks: "5 ticks", risk: "Medium", contractGroup: "High / Low Tick", confidence: Math.min(75, 60 + (pct[minR] > 12 ? 15 : pct[minR] > 10 ? 8 : 0)), reason: `Digit ${minR} is period low — ${pct[minR].toFixed(1)}% frequency` });
+    }
 
-    if (maxPct > 13)
-      signals.push({ ...base, id: `${symbol}-accu`, theme: nextTheme(), tradeType: "ACCUMULATOR", entryDigit: "Current price ±0.03%", ticks: "5–20 ticks", confidence: 73, reason: `Stable digit distribution, low volatility window` });
+    // ── IN / OUT ──────────────────────────────────────────────────────────────
+    const recent20 = data.digits.slice(-20);
+    if (recent20.length >= 20) {
+      const spread = Math.max(...recent20) - Math.min(...recent20);
+      const midPct = [3, 4, 5, 6].reduce((s, d) => s + pct[d], 0);
+      if (spread <= 4)
+        push({ id: `${symbol}-in-stay`, theme: nt(), tradeType: "IN (Stay In)", entryDigit: "Current barrier", ticks: "5 ticks", risk: "Low", contractGroup: "In / Out", confidence: 72, reason: `Last 20 digits in tight range (${Math.min(...recent20)}–${Math.max(...recent20)})` });
+      if (spread >= 8)
+        push({ id: `${symbol}-out`, theme: nt(), tradeType: "OUT (Exit)", entryDigit: "Current barrier", ticks: "5 ticks", risk: "Medium", contractGroup: "In / Out", confidence: 70, reason: `Price volatile — last 20 digits spanning ${spread} range` });
+      if (midPct > 44)
+        push({ id: `${symbol}-in-mid`, theme: nt(), tradeType: "IN (Mid Range)", entryDigit: "Mid barrier", ticks: "3 ticks", risk: "Low", contractGroup: "In / Out", confidence: Math.min(76, 50 + midPct - 40), reason: `Mid digits 3–6 at ${midPct.toFixed(1)}% frequency` });
+    }
+
+    // ── ACCUMULATORS ──────────────────────────────────────────────────────────
+    const recent10 = data.digits.slice(-10);
+    if (recent10.length >= 10) {
+      const variance = recent10.reduce((s, d) => s + Math.abs(d - 5), 0) / recent10.length;
+      if (variance < 2.5)
+        push({ id: `${symbol}-accu-g`, theme: nt(), tradeType: "ACCUMULATOR", subLabel: "Growth 1%", entryDigit: "±0.01% barrier", ticks: "5–20 ticks", risk: "Low", contractGroup: "Accumulators", confidence: 74, reason: `Low digit variance (${variance.toFixed(2)}) — price stable, accumulate growth` });
+      else if (maxPct > 12 && maxPct < 18)
+        push({ id: `${symbol}-accu-s`, theme: nt(), tradeType: "ACCUMULATOR", subLabel: "Steady trend", entryDigit: "Current barrier", ticks: "10–30 ticks", risk: "Low", contractGroup: "Accumulators", confidence: 70, reason: `Consistent digit pattern — accumulate safely` });
+    }
+
+    // ── ASIANS ────────────────────────────────────────────────────────────────
+    const last20 = data.digits.slice(-20);
+    if (last20.length >= 20) {
+      const avg = last20.reduce((s, d) => s + d, 0) / last20.length;
+      const avgLastDigit = Math.round(avg) % 10;
+      if (avg > 5.2)
+        push({ id: `${symbol}-asian-over`, theme: nt(), tradeType: "ASIAN OVER", entryDigit: `Avg digit ${avg.toFixed(2)}`, ticks: "End of period", risk: "Medium", contractGroup: "Asians", confidence: Math.min(78, 68 + Math.round((avg - 5) * 5)), reason: `20-tick average last digit = ${avg.toFixed(2)} (above 5)` });
+      if (avg < 4.8)
+        push({ id: `${symbol}-asian-under`, theme: nt(), tradeType: "ASIAN UNDER", entryDigit: `Avg digit ${avg.toFixed(2)}`, ticks: "End of period", risk: "Medium", contractGroup: "Asians", confidence: Math.min(78, 68 + Math.round((5 - avg) * 5)), reason: `20-tick average last digit = ${avg.toFixed(2)} (below 5)` });
+      const evenAvg = avg % 1 < 0.3 || avg % 1 > 0.7;
+      if (evenAvg && avgLastDigit % 2 === 0)
+        push({ id: `${symbol}-asian-even`, theme: nt(), tradeType: "ASIAN EVEN", entryDigit: `Digit ${avgLastDigit}`, ticks: "End of period", risk: "Medium", contractGroup: "Asians", confidence: 66, reason: `Average digit rounds to ${avgLastDigit} (even)` });
+    }
   });
 
   return signals.sort((a, b) => b.confidence - a.confidence);
@@ -240,13 +308,30 @@ function CountdownTimer({ validUntil }: { validUntil: number }) {
 }
 
 const CONTRACT_COLORS: Record<string, string> = {
-  RISE: "text-green-500", FALL: "text-red-500", EVEN: "text-blue-400", ODD: "text-orange-400",
-  MATCHES: "text-primary", DIFFERS: "text-red-400", ACCUMULATOR: "text-yellow-500",
+  RISE: "text-green-500", FALL: "text-red-500",
+  EVEN: "text-blue-400", ODD: "text-orange-400",
+  MATCHES: "text-primary", DIFFERS: "text-red-400",
+  ACCUMULATOR: "text-yellow-500",
+  "HIGH TICK": "text-green-300", "LOW TICK": "text-red-300",
+  "IN (Stay In)": "text-primary", "IN (Mid Range)": "text-primary", "OUT (Exit)": "text-orange-400",
+  "ASIAN OVER": "text-green-400", "ASIAN UNDER": "text-red-400", "ASIAN EVEN": "text-blue-300",
   "OVER": "text-primary", "UNDER": "text-orange-400",
 };
 
+const GROUP_COLORS: Record<string, string> = {
+  "Digit Types":    "bg-blue-500/10 text-blue-400 border-blue-500/30",
+  "Over / Under":   "bg-primary/10 text-primary border-primary/30",
+  "Rise / Fall":    "bg-green-500/10 text-green-400 border-green-500/30",
+  "High / Low Tick":"bg-purple-500/10 text-purple-400 border-purple-500/30",
+  "In / Out":       "bg-yellow-500/10 text-yellow-400 border-yellow-500/30",
+  "Accumulators":   "bg-orange-500/10 text-orange-400 border-orange-500/30",
+  "Asians":         "bg-pink-500/10 text-pink-400 border-pink-500/30",
+};
+
+const RISK_COLORS = { Low: "bg-green-500", Medium: "bg-yellow-500", High: "bg-red-500" };
+
 function contractColor(type: string) {
-  return Object.entries(CONTRACT_COLORS).find(([k]) => type.startsWith(k))?.[1] ?? "text-foreground";
+  return Object.entries(CONTRACT_COLORS).find(([k]) => type.startsWith(k) || type === k)?.[1] ?? "text-foreground";
 }
 
 const CAT_LABELS: Record<MarketCategory, string> = {
@@ -399,6 +484,7 @@ export default function SmartSignals() {
                   <div className="text-[10px] text-muted-foreground font-mono uppercase truncate">{sig.marketName}</div>
                   <div className={`text-xl font-black font-mono leading-tight ${contractColor(sig.tradeType)}`}>
                     {sig.tradeType}
+                    {sig.subLabel && <span className="text-xs ml-2 font-normal opacity-70">{sig.subLabel}</span>}
                   </div>
                 </div>
                 <div className="flex flex-col items-end gap-1 flex-shrink-0 ml-2">
@@ -411,6 +497,17 @@ export default function SmartSignals() {
 
               {/* Card body */}
               <div className="px-4 py-3 space-y-3">
+                {/* Contract group + risk row */}
+                <div className="flex items-center justify-between">
+                  <Badge variant="outline" className={`text-[9px] px-2 ${GROUP_COLORS[sig.contractGroup] ?? "bg-muted text-muted-foreground border-border"}`}>
+                    {sig.contractGroup}
+                  </Badge>
+                  <div className="flex items-center gap-1.5 text-[10px]">
+                    <div className={`w-2 h-2 rounded-full ${RISK_COLORS[sig.risk]}`} />
+                    <span className="font-bold uppercase text-muted-foreground">{sig.risk} risk</span>
+                  </div>
+                </div>
+
                 <div className="grid grid-cols-2 gap-2 text-[11px]">
                   <div className="bg-muted rounded px-2 py-1.5">
                     <div className="text-muted-foreground">Entry</div>
