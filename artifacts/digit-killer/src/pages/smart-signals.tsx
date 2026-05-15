@@ -1,29 +1,34 @@
-import { useState, useEffect, useMemo, useCallback, useRef } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { useDerivMultiMarket } from "@/hooks/useDerivMultiMarket";
-import { MARKETS } from "@/hooks/useDerivWebSocket";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { MARKETS, MARKETS_BY_CATEGORY, CATEGORY_LABELS, MarketCategory } from "@/hooks/useDerivWebSocket";
+import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import {
-  Download, RefreshCw, Zap, Clock, TrendingUp, TrendingDown,
-  BarChart2, Target, AlertCircle, Sparkles, Timer
-} from "lucide-react";
+import { Download, RefreshCw, Zap, Clock, Sparkles, Timer, Activity, TrendingDown, TrendingUp } from "lucide-react";
 
 const SIGNAL_VALIDITY_MS = 20 * 60 * 1000;
 const CONTACT = "0768925411";
 const AUTHOR = "AHMED AI";
 
 const THEMES = [
-  { id: 1, name: "Cyber Teal", primary: "#00d1d1", bg1: "#000000", bg2: "#001a1a", accent: "#00ffff" },
-  { id: 2, name: "Gold Cosmos", primary: "#f59e0b", bg1: "#0a0020", bg2: "#1a0040", accent: "#fde68a" },
+  { id: 1, name: "Cyber Teal",   primary: "#00d1d1", bg1: "#000000", bg2: "#001a1a", accent: "#00ffff" },
+  { id: 2, name: "Gold Cosmos",  primary: "#f59e0b", bg1: "#0a0020", bg2: "#1a0040", accent: "#fde68a" },
   { id: 3, name: "Matrix Green", primary: "#00ff41", bg1: "#000000", bg2: "#001200", accent: "#39ff14" },
-  { id: 4, name: "Neon Night", primary: "#a855f7", bg1: "#050012", bg2: "#0d0030", accent: "#e879f9" },
-  { id: 5, name: "Fire Steel", primary: "#ef4444", bg1: "#0a0000", bg2: "#200000", accent: "#f97316" },
+  { id: 4, name: "Neon Night",   primary: "#a855f7", bg1: "#050012", bg2: "#0d0030", accent: "#e879f9" },
+  { id: 5, name: "Fire Steel",   primary: "#ef4444", bg1: "#0a0000", bg2: "#200000", accent: "#f97316" },
 ];
+
+const CATEGORY_ICONS: Record<MarketCategory, React.ReactNode> = {
+  volatility: <Activity className="w-3.5 h-3.5" />,
+  crash_boom: <TrendingDown className="w-3.5 h-3.5" />,
+  jump:       <Zap className="w-3.5 h-3.5" />,
+  bear_bull:  <TrendingUp className="w-3.5 h-3.5" />,
+};
 
 type GeneratedSignal = {
   id: string;
   market: string;
   marketName: string;
+  category: MarketCategory;
   tradeType: string;
   entryDigit: string;
   ticks: string;
@@ -34,15 +39,15 @@ type GeneratedSignal = {
   reason: string;
 };
 
-function generateSignals(marketsData: Record<string, { digits: number[]; lastDigit: number | null; prices?: number[] }>): GeneratedSignal[] {
+function generateSignals(marketsData: Record<string, { digits: number[]; lastDigit: number | null }>): GeneratedSignal[] {
   const signals: GeneratedSignal[] = [];
   const now = Date.now();
+  let themeCounter = 0;
 
   Object.entries(marketsData).forEach(([symbol, data]) => {
     if (data.digits.length < 30) return;
     const mkt = MARKETS.find((m) => m.symbol === symbol);
     if (!mkt) return;
-    const marketName = mkt.name;
 
     const freqs = new Array(10).fill(0);
     data.digits.slice(-100).forEach((d) => freqs[d]++);
@@ -53,52 +58,50 @@ function generateSignals(marketsData: Record<string, { digits: number[]; lastDig
     const minPct = Math.min(...pct);
     const maxDigit = pct.indexOf(maxPct);
     const minDigit = pct.indexOf(minPct);
-
     const evenPct = [0, 2, 4, 6, 8].reduce((s, d) => s + pct[d], 0);
-    const oddPct = [1, 3, 5, 7, 9].reduce((s, d) => s + pct[d], 0);
+    const oddPct  = [1, 3, 5, 7, 9].reduce((s, d) => s + pct[d], 0);
     const overPct = [5, 6, 7, 8, 9].reduce((s, d) => s + pct[d], 0);
 
-    const theme = ((signals.length % 5) + 1) as 1 | 2 | 3 | 4 | 5;
-    const base = { market: symbol, marketName, generatedAt: now, validUntil: now + SIGNAL_VALIDITY_MS, theme };
+    const base = {
+      market: symbol,
+      marketName: mkt.name,
+      category: mkt.category,
+      generatedAt: now,
+      validUntil: now + SIGNAL_VALIDITY_MS,
+    };
+    const nextTheme = (): 1|2|3|4|5 => (((themeCounter++) % 5) + 1) as 1|2|3|4|5;
 
-    if (maxPct > 14) {
-      signals.push({ ...base, id: `${symbol}-match`, tradeType: "MATCHES", entryDigit: `${maxDigit}`, ticks: "1 tick", confidence: Math.min(85, 60 + maxPct * 1.5), reason: `Digit ${maxDigit} appeared ${maxPct.toFixed(1)}% of last 100 ticks` });
-    }
+    if (maxPct > 14)
+      signals.push({ ...base, id: `${symbol}-match`, theme: nextTheme(), tradeType: "MATCHES", entryDigit: `Digit ${maxDigit}`, ticks: "1 tick", confidence: Math.min(85, 60 + maxPct * 1.5), reason: `Digit ${maxDigit} at ${maxPct.toFixed(1)}% of last 100 ticks` });
 
-    if (minPct < 7) {
-      signals.push({ ...base, id: `${symbol}-differ`, tradeType: "DIFFERS", entryDigit: `${minDigit}`, ticks: "1 tick", confidence: Math.min(82, 55 + (10 - minPct) * 2), theme: ((theme % 5) + 1) as 1|2|3|4|5, reason: `Digit ${minDigit} appeared only ${minPct.toFixed(1)}% of last 100 ticks` });
-    }
+    if (minPct < 7)
+      signals.push({ ...base, id: `${symbol}-differ`, theme: nextTheme(), tradeType: "DIFFERS", entryDigit: `Digit ${minDigit}`, ticks: "1 tick", confidence: Math.min(82, 55 + (10 - minPct) * 2), reason: `Digit ${minDigit} only ${minPct.toFixed(1)}% — statistically cold` });
 
-    if (evenPct > 54) {
-      signals.push({ ...base, id: `${symbol}-even`, tradeType: "EVEN", entryDigit: "Any odd digit", ticks: "1 tick", confidence: Math.min(78, 50 + evenPct - 50), theme: ((theme + 1) % 5 + 1) as 1|2|3|4|5, reason: `Even digits at ${evenPct.toFixed(1)}% frequency` });
-    } else if (oddPct > 54) {
-      signals.push({ ...base, id: `${symbol}-odd`, tradeType: "ODD", entryDigit: "Any even digit", ticks: "1 tick", confidence: Math.min(78, 50 + oddPct - 50), theme: ((theme + 2) % 5 + 1) as 1|2|3|4|5, reason: `Odd digits at ${oddPct.toFixed(1)}% frequency` });
-    }
+    if (evenPct > 54)
+      signals.push({ ...base, id: `${symbol}-even`, theme: nextTheme(), tradeType: "EVEN", entryDigit: "Any odd digit now", ticks: "1 tick", confidence: Math.min(78, 50 + evenPct - 50), reason: `Even digits at ${evenPct.toFixed(1)}% frequency` });
+    else if (oddPct > 54)
+      signals.push({ ...base, id: `${symbol}-odd`, theme: nextTheme(), tradeType: "ODD", entryDigit: "Any even digit now", ticks: "1 tick", confidence: Math.min(78, 50 + oddPct - 50), reason: `Odd digits at ${oddPct.toFixed(1)}% frequency` });
 
-    if (overPct > 55) {
-      const t = overPct > 60 ? "OVER 4" : "OVER 5";
-      signals.push({ ...base, id: `${symbol}-over`, tradeType: t, entryDigit: "2-4", ticks: "2-3 ticks", confidence: Math.min(80, 55 + overPct - 55), theme: ((theme + 3) % 5 + 1) as 1|2|3|4|5, reason: `High digits (5-9) dominant at ${overPct.toFixed(1)}%` });
-    } else if (overPct < 45) {
-      const t = overPct < 40 ? "UNDER 4" : "UNDER 5";
-      signals.push({ ...base, id: `${symbol}-under`, tradeType: t, entryDigit: "6-8", ticks: "2-3 ticks", confidence: Math.min(80, 55 + (45 - overPct)), theme: ((theme + 4) % 5 + 1) as 1|2|3|4|5, reason: `Low digits (0-4) dominant` });
-    }
+    if (overPct > 55)
+      signals.push({ ...base, id: `${symbol}-over`, theme: nextTheme(), tradeType: overPct > 60 ? "OVER 4" : "OVER 5", entryDigit: "Digits 2–4", ticks: "2–3 ticks", confidence: Math.min(80, 55 + overPct - 55), reason: `High digits 5–9 dominant at ${overPct.toFixed(1)}%` });
+    else if (overPct < 45)
+      signals.push({ ...base, id: `${symbol}-under`, theme: nextTheme(), tradeType: overPct < 40 ? "UNDER 4" : "UNDER 5", entryDigit: "Digits 6–8", ticks: "2–3 ticks", confidence: Math.min(80, 55 + (45 - overPct)), reason: `Low digits 0–4 dominant` });
 
     const recent5 = data.digits.slice(-5);
     const risingCount = recent5.filter((d, i) => i > 0 && d >= recent5[i - 1]).length;
-    if (risingCount >= 4) {
-      signals.push({ ...base, id: `${symbol}-rise`, tradeType: "RISE", entryDigit: "Current price", ticks: "5 ticks", confidence: 70, theme: ((theme + 1) % 5 + 1) as 1|2|3|4|5, reason: `4/5 last digits rising — bullish momentum` });
-    } else if (risingCount <= 1) {
-      signals.push({ ...base, id: `${symbol}-fall`, tradeType: "FALL", entryDigit: "Current price", ticks: "5 ticks", confidence: 70, theme: ((theme + 2) % 5 + 1) as 1|2|3|4|5, reason: `4/5 last digits falling — bearish momentum` });
-    }
+    if (risingCount >= 4)
+      signals.push({ ...base, id: `${symbol}-rise`, theme: nextTheme(), tradeType: "RISE", entryDigit: "Current price", ticks: "5 ticks", confidence: 70, reason: `4/5 recent digits rising — bullish` });
+    else if (risingCount <= 1)
+      signals.push({ ...base, id: `${symbol}-fall`, theme: nextTheme(), tradeType: "FALL", entryDigit: "Current price", ticks: "5 ticks", confidence: 70, reason: `4/5 recent digits falling — bearish` });
 
-    if (maxPct > 13) {
-      signals.push({ ...base, id: `${symbol}-accu`, tradeType: "ACCUMULATOR", entryDigit: "Current price ±0.03%", ticks: "5-20 ticks", confidence: 73, theme: ((theme + 3) % 5 + 1) as 1|2|3|4|5, reason: `Stable price volatility in low range` });
-    }
+    if (maxPct > 13)
+      signals.push({ ...base, id: `${symbol}-accu`, theme: nextTheme(), tradeType: "ACCUMULATOR", entryDigit: "Current price ±0.03%", ticks: "5–20 ticks", confidence: 73, reason: `Stable digit distribution, low volatility window` });
   });
 
-  return signals.sort((a, b) => b.confidence - a.confidence).slice(0, 12);
+  return signals.sort((a, b) => b.confidence - a.confidence);
 }
 
+// ─── Canvas flyer (themes apply only to the PNG, not the UI cards) ──────────
 function drawThemeBackground(ctx: CanvasRenderingContext2D, W: number, H: number, theme: typeof THEMES[0]) {
   const grad = ctx.createLinearGradient(0, 0, W, H);
   grad.addColorStop(0, theme.bg1);
@@ -107,48 +110,32 @@ function drawThemeBackground(ctx: CanvasRenderingContext2D, W: number, H: number
   ctx.fillRect(0, 0, W, H);
 
   if (theme.id === 1) {
-    ctx.strokeStyle = `${theme.primary}22`;
-    ctx.lineWidth = 0.5;
-    for (let x = 0; x < W; x += 35) { ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, H); ctx.stroke(); }
-    for (let y = 0; y < H; y += 35) { ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(W, y); ctx.stroke(); }
+    ctx.strokeStyle = `${theme.primary}22`; ctx.lineWidth = 0.5;
+    for (let x = 0; x < W; x += 35) { ctx.beginPath(); ctx.moveTo(x,0); ctx.lineTo(x,H); ctx.stroke(); }
+    for (let y = 0; y < H; y += 35) { ctx.beginPath(); ctx.moveTo(0,y); ctx.lineTo(W,y); ctx.stroke(); }
   } else if (theme.id === 2) {
     for (let i = 0; i < 80; i++) {
-      const x = Math.random() * W, y = Math.random() * H, r = Math.random() * 1.5 + 0.5;
-      ctx.beginPath(); ctx.arc(x, y, r, 0, Math.PI * 2);
-      ctx.fillStyle = `rgba(255,255,255,${Math.random() * 0.6 + 0.1})`; ctx.fill();
+      const x = Math.random()*W, y = Math.random()*H, r = Math.random()*1.5+0.5;
+      ctx.beginPath(); ctx.arc(x,y,r,0,Math.PI*2);
+      ctx.fillStyle = `rgba(255,255,255,${Math.random()*0.6+0.1})`; ctx.fill();
     }
   } else if (theme.id === 3) {
-    ctx.font = "10px monospace";
-    ctx.fillStyle = `${theme.primary}20`;
-    const chars = "01";
-    for (let col = 0; col < W; col += 16) {
-      const rows = Math.floor(Math.random() * 8) + 4;
-      for (let row = 0; row < rows; row++) {
-        ctx.fillText(chars[Math.floor(Math.random() * 2)], col, row * 18 + Math.random() * 20);
-      }
+    ctx.font="10px monospace"; ctx.fillStyle=`${theme.primary}20`;
+    for (let col=0; col<W; col+=16) {
+      const rows=Math.floor(Math.random()*8)+4;
+      for (let row=0; row<rows; row++) ctx.fillText(Math.random()>0.5?"1":"0",col,row*18+Math.random()*20);
     }
   } else if (theme.id === 4) {
-    ctx.strokeStyle = `${theme.primary}18`;
-    ctx.lineWidth = 1;
-    const s = 50;
-    for (let col = 0; col < W + s; col += s * 1.5) {
-      for (let row = 0; row < H + s; row += s * 0.866 * 2) {
-        for (let i = 0; i < 6; i++) {
-          const angle = (i * 60 - 30) * Math.PI / 180;
-          const nx = col + Math.cos(angle) * s * 0.5;
-          const ny = row + Math.sin(angle) * s * 0.5;
-          if (i === 0) ctx.moveTo(nx, ny); else ctx.lineTo(nx, ny);
-        }
+    ctx.strokeStyle=`${theme.primary}18`; ctx.lineWidth=1;
+    const s=50;
+    for (let col=0; col<W+s; col+=s*1.5)
+      for (let row=0; row<H+s; row+=s*0.866*2) {
+        for (let i=0;i<6;i++){const a=(i*60-30)*Math.PI/180;const nx=col+Math.cos(a)*s*0.5;const ny=row+Math.sin(a)*s*0.5;if(i===0)ctx.moveTo(nx,ny);else ctx.lineTo(nx,ny);}
         ctx.closePath(); ctx.stroke();
       }
-    }
-  } else if (theme.id === 5) {
-    ctx.strokeStyle = `${theme.primary}15`;
-    ctx.lineWidth = 1;
-    for (let i = 0; i < 8; i++) {
-      const x1 = Math.random() * W, y1 = 0, x2 = Math.random() * W, y2 = H;
-      ctx.beginPath(); ctx.moveTo(x1, y1); ctx.lineTo(x2, y2); ctx.stroke();
-    }
+  } else {
+    ctx.strokeStyle=`${theme.primary}15`; ctx.lineWidth=1;
+    for (let i=0;i<8;i++){ctx.beginPath();ctx.moveTo(Math.random()*W,0);ctx.lineTo(Math.random()*W,H);ctx.stroke();}
   }
 }
 
@@ -162,115 +149,72 @@ function drawFlyer(signal: GeneratedSignal, logoUrl: string) {
   const execute = (logoImg: HTMLImageElement | null) => {
     drawThemeBackground(ctx, W, H, theme);
 
-    ctx.strokeStyle = theme.primary;
-    ctx.lineWidth = 3;
-    ctx.shadowColor = theme.primary;
-    ctx.shadowBlur = 15;
-    ctx.strokeRect(10, 10, W - 20, H - 20);
-    ctx.shadowBlur = 0;
-
-    ctx.strokeStyle = `${theme.accent}40`;
-    ctx.lineWidth = 1;
-    ctx.strokeRect(20, 20, W - 40, H - 40);
+    ctx.strokeStyle = theme.primary; ctx.lineWidth = 3;
+    ctx.shadowColor = theme.primary; ctx.shadowBlur = 15;
+    ctx.strokeRect(10,10,W-20,H-20); ctx.shadowBlur = 0;
+    ctx.strokeStyle = `${theme.accent}40`; ctx.lineWidth = 1;
+    ctx.strokeRect(20,20,W-40,H-40);
 
     if (logoImg) {
-      ctx.save();
-      ctx.beginPath();
-      ctx.arc(70, 70, 48, 0, Math.PI * 2);
-      ctx.clip();
-      ctx.drawImage(logoImg, 22, 22, 96, 96);
-      ctx.restore();
-      ctx.beginPath();
-      ctx.arc(70, 70, 48, 0, Math.PI * 2);
-      ctx.strokeStyle = theme.primary;
-      ctx.lineWidth = 2;
-      ctx.stroke();
+      ctx.save(); ctx.beginPath(); ctx.arc(70,70,48,0,Math.PI*2); ctx.clip();
+      ctx.drawImage(logoImg,22,22,96,96); ctx.restore();
+      ctx.beginPath(); ctx.arc(70,70,48,0,Math.PI*2);
+      ctx.strokeStyle=theme.primary; ctx.lineWidth=2; ctx.stroke();
     }
 
-    ctx.font = "bold 11px monospace";
-    ctx.fillStyle = theme.primary;
-    ctx.letterSpacing = "3px";
-    ctx.fillText("AHMED SYNTRADER", 140, 52);
-    ctx.letterSpacing = "0px";
-    ctx.font = "bold 28px monospace";
-    ctx.fillStyle = "#ffffff";
-    ctx.fillText("AHMED AI SIGNALS", 140, 88);
-    ctx.font = "11px monospace";
-    ctx.fillStyle = `${theme.primary}aa`;
-    ctx.fillText(`ahmedsyntrader.site  ·  ${CONTACT}`, 140, 110);
+    ctx.font="bold 11px monospace"; ctx.fillStyle=theme.primary; ctx.letterSpacing="3px";
+    ctx.fillText("AHMED SYNTRADER",140,52); ctx.letterSpacing="0px";
+    ctx.font="bold 28px monospace"; ctx.fillStyle="#ffffff"; ctx.fillText("AHMED AI SIGNALS",140,88);
+    ctx.font="11px monospace"; ctx.fillStyle=`${theme.primary}aa`;
+    ctx.fillText(`ahmedsyntrader.site  ·  ${CONTACT}`,140,110);
 
-    const divY = 130;
-    ctx.strokeStyle = `${theme.primary}60`;
-    ctx.lineWidth = 1;
-    ctx.beginPath(); ctx.moveTo(30, divY); ctx.lineTo(W - 30, divY); ctx.stroke();
+    ctx.strokeStyle=`${theme.primary}60`; ctx.lineWidth=1;
+    ctx.beginPath(); ctx.moveTo(30,130); ctx.lineTo(W-30,130); ctx.stroke();
 
-    const typeGrad = ctx.createLinearGradient(0, 140, W, 200);
-    typeGrad.addColorStop(0, `${theme.primary}22`);
-    typeGrad.addColorStop(1, "transparent");
-    ctx.fillStyle = typeGrad;
-    ctx.fillRect(30, 140, W - 60, 70);
+    ctx.font="bold 44px monospace"; ctx.fillStyle=theme.primary;
+    ctx.shadowColor=theme.primary; ctx.shadowBlur=20;
+    ctx.fillText(signal.tradeType,50,195); ctx.shadowBlur=0;
 
-    ctx.font = "bold 44px monospace";
-    ctx.fillStyle = theme.primary;
-    ctx.shadowColor = theme.primary;
-    ctx.shadowBlur = 20;
-    ctx.fillText(signal.tradeType, 50, 195);
-    ctx.shadowBlur = 0;
+    ctx.font="bold 14px monospace"; ctx.fillStyle=theme.accent;
+    ctx.fillText(signal.marketName.toUpperCase(),W-220,165);
+    ctx.font="11px monospace"; ctx.fillStyle=`${theme.primary}99`;
+    ctx.fillText(signal.market,W-220,185);
 
-    ctx.font = "bold 14px monospace";
-    ctx.fillStyle = theme.accent;
-    ctx.fillText(signal.marketName.toUpperCase(), W - 180, 170);
-    ctx.font = "11px monospace";
-    ctx.fillStyle = `${theme.primary}99`;
-    ctx.fillText(signal.market, W - 180, 190);
-
-    const rows = [
-      { label: "📌  ENTRY POINT", value: signal.entryDigit },
-      { label: "⏱  DURATION", value: signal.ticks },
-      { label: "📊  CONFIDENCE", value: `${signal.confidence}%` },
-      { label: "🔍  SIGNAL BASIS", value: signal.reason },
-      { label: "⏳  VALID FOR", value: "20 MINUTES" },
+    const rows=[
+      {label:"📌  ENTRY POINT",value:signal.entryDigit},
+      {label:"⏱  DURATION",value:signal.ticks},
+      {label:"📊  CONFIDENCE",value:`${signal.confidence}%`},
+      {label:"🔍  SIGNAL BASIS",value:signal.reason},
+      {label:"⏳  VALID FOR",value:"20 MINUTES"},
     ];
-
-    let ry = 240;
-    rows.forEach(({ label, value }) => {
-      ctx.font = "11px monospace";
-      ctx.fillStyle = `${theme.primary}99`;
-      ctx.fillText(label, 50, ry);
-      ctx.font = "bold 15px monospace";
-      ctx.fillStyle = "#ffffff";
-      const displayValue = value.length > 45 ? value.substring(0, 45) + "..." : value;
-      ctx.fillText(displayValue, 50, ry + 20);
-      ry += 50;
+    let ry=240;
+    rows.forEach(({label,value})=>{
+      ctx.font="11px monospace"; ctx.fillStyle=`${theme.primary}99`; ctx.fillText(label,50,ry);
+      ctx.font="bold 15px monospace"; ctx.fillStyle="#ffffff";
+      ctx.fillText(value.length>45?value.slice(0,45)+"...":value,50,ry+20);
+      ry+=50;
     });
 
-    ctx.strokeStyle = `${theme.primary}40`;
-    ctx.lineWidth = 1;
-    ctx.beginPath(); ctx.moveTo(30, H - 70); ctx.lineTo(W - 30, H - 70); ctx.stroke();
+    ctx.strokeStyle=`${theme.primary}40`; ctx.lineWidth=1;
+    ctx.beginPath(); ctx.moveTo(30,H-70); ctx.lineTo(W-30,H-70); ctx.stroke();
+    ctx.font="bold 13px monospace"; ctx.fillStyle=theme.primary; ctx.textAlign="center";
+    ctx.fillText(`Made by ${AUTHOR}  ·  ${CONTACT}  ·  ahmedsyntrader.site`,W/2,H-42);
+    ctx.font="10px monospace"; ctx.fillStyle=`${theme.primary}70`;
+    ctx.fillText("Risk Disclaimer: Trading involves risk. Past signals do not guarantee future results.",W/2,H-22);
+    ctx.textAlign="left";
 
-    ctx.font = "bold 13px monospace";
-    ctx.fillStyle = theme.primary;
-    ctx.textAlign = "center";
-    ctx.fillText(`Made by ${AUTHOR}  ·  ${CONTACT}  ·  ahmedsyntrader.site`, W / 2, H - 42);
-    ctx.font = "10px monospace";
-    ctx.fillStyle = `${theme.primary}70`;
-    ctx.fillText("Risk Disclaimer: Trading involves risk. Past signals do not guarantee future results.", W / 2, H - 22);
-    ctx.textAlign = "left";
-
-    const dataUrl = canvas.toDataURL("image/png");
-    const link = document.createElement("a");
-    link.download = `AhmedSignal_${signal.tradeType.replace(/\s+/g, "_")}_${signal.marketName}_${Date.now()}.png`;
-    link.href = dataUrl;
-    link.click();
+    const link=document.createElement("a");
+    link.download=`AhmedSignal_${signal.tradeType.replace(/\s+/g,"_")}_${signal.marketName}_${Date.now()}.png`;
+    link.href=canvas.toDataURL("image/png"); link.click();
   };
 
   const img = new Image();
-  img.crossOrigin = "anonymous";
-  img.onload = () => execute(img);
-  img.onerror = () => execute(null);
-  img.src = logoUrl;
+  img.crossOrigin="anonymous";
+  img.onload=()=>execute(img); img.onerror=()=>execute(null);
+  img.src=logoUrl;
 }
 
+// ─── Countdown timer component ───────────────────────────────────────────────
 function CountdownTimer({ validUntil }: { validUntil: number }) {
   const [timeLeft, setTimeLeft] = useState(Math.max(0, validUntil - Date.now()));
   useEffect(() => {
@@ -279,38 +223,53 @@ function CountdownTimer({ validUntil }: { validUntil: number }) {
   }, [validUntil]);
   const mins = Math.floor(timeLeft / 60000);
   const secs = Math.floor((timeLeft % 60000) / 1000);
-  const pct = Math.max(0, (timeLeft / SIGNAL_VALIDITY_MS) * 100);
+  const pct  = Math.max(0, (timeLeft / SIGNAL_VALIDITY_MS) * 100);
   const color = pct > 50 ? "text-green-400" : pct > 20 ? "text-yellow-400" : "text-red-400";
+  const bar   = pct > 50 ? "bg-green-500" : pct > 20 ? "bg-yellow-500" : "bg-red-500";
   return (
     <div className="flex items-center gap-2">
-      <Timer className={`w-3.5 h-3.5 ${color}`} />
-      <span className={`font-mono text-sm font-bold ${color}`}>
+      <Timer className={`w-3.5 h-3.5 flex-shrink-0 ${color}`} />
+      <span className={`font-mono text-xs font-bold flex-shrink-0 ${color}`}>
         {timeLeft <= 0 ? "EXPIRED" : `${mins}:${secs.toString().padStart(2, "0")}`}
       </span>
-      <div className="flex-1 h-1 bg-muted rounded-full overflow-hidden">
-        <div className={`h-full rounded-full transition-all ${pct > 50 ? "bg-green-500" : pct > 20 ? "bg-yellow-500" : "bg-red-500"}`} style={{ width: `${pct}%` }} />
+      <div className="flex-1 h-1 bg-border rounded-full overflow-hidden">
+        <div className={`h-full rounded-full transition-all ${bar}`} style={{ width: `${pct}%` }} />
       </div>
     </div>
   );
 }
 
-const THEME_BADGES: Record<number, string> = {
-  1: "bg-teal-500/20 text-teal-400 border-teal-500/30",
-  2: "bg-yellow-500/20 text-yellow-400 border-yellow-500/30",
-  3: "bg-green-500/20 text-green-400 border-green-500/30",
-  4: "bg-purple-500/20 text-purple-400 border-purple-500/30",
-  5: "bg-red-500/20 text-red-400 border-red-500/30",
+const CONTRACT_COLORS: Record<string, string> = {
+  RISE: "text-green-500", FALL: "text-red-500", EVEN: "text-blue-400", ODD: "text-orange-400",
+  MATCHES: "text-primary", DIFFERS: "text-red-400", ACCUMULATOR: "text-yellow-500",
+  "OVER": "text-primary", "UNDER": "text-orange-400",
 };
 
-const CONTRACT_COLORS: Record<string, string> = {
-  RISE: "text-green-400", FALL: "text-red-400", EVEN: "text-blue-400", ODD: "text-orange-400",
-  MATCHES: "text-primary", DIFFERS: "text-red-400", ACCUMULATOR: "text-yellow-400",
+function contractColor(type: string) {
+  return Object.entries(CONTRACT_COLORS).find(([k]) => type.startsWith(k))?.[1] ?? "text-foreground";
+}
+
+const CAT_LABELS: Record<MarketCategory, string> = {
+  volatility: "Volatility",
+  crash_boom: "Crash · Boom",
+  jump:       "Jump",
+  bear_bull:  "Bear · Bull",
 };
+
+const CAT_COLORS: Record<MarketCategory, string> = {
+  volatility: "bg-blue-500/10 text-blue-400 border-blue-500/30",
+  crash_boom: "bg-red-500/10 text-red-400 border-red-500/30",
+  jump:       "bg-yellow-500/10 text-yellow-400 border-yellow-500/30",
+  bear_bull:  "bg-green-500/10 text-green-400 border-green-500/30",
+};
+
+type CategoryFilter = "all" | MarketCategory;
 
 export default function SmartSignals() {
   const marketsData = useDerivMultiMarket();
   const [signals, setSignals] = useState<GeneratedSignal[]>([]);
   const [lastGenerated, setLastGenerated] = useState(0);
+  const [categoryFilter, setCategoryFilter] = useState<CategoryFilter>("all");
   const logoUrl = `${import.meta.env.BASE_URL}logo.png`.replace("//", "/");
 
   const refresh = useCallback(() => {
@@ -323,9 +282,7 @@ export default function SmartSignals() {
   }, [marketsData]);
 
   useEffect(() => {
-    if (Object.values(marketsData).some((d) => d.digits.length >= 30) && signals.length === 0) {
-      refresh();
-    }
+    if (Object.values(marketsData).some((d) => d.digits.length >= 30) && signals.length === 0) refresh();
   }, [marketsData, signals.length, refresh]);
 
   useEffect(() => {
@@ -334,126 +291,175 @@ export default function SmartSignals() {
     return () => clearTimeout(t);
   }, [lastGenerated, refresh]);
 
-  const totalMarkets = Object.keys(marketsData).length;
-  const readyMarkets = Object.values(marketsData).filter((d) => d.digits.length >= 30).length;
+  const totalMarkets  = Object.keys(marketsData).length;
+  const readyMarkets  = Object.values(marketsData).filter((d) => d.digits.length >= 30).length;
+
+  const filtered = categoryFilter === "all"
+    ? signals
+    : signals.filter((s) => s.category === categoryFilter);
+
+  // Count signals per category for badges
+  const catCounts = (Object.keys(MARKETS_BY_CATEGORY) as MarketCategory[]).reduce<Record<string, number>>((acc, cat) => {
+    acc[cat] = signals.filter((s) => s.category === cat).length;
+    return acc;
+  }, {});
 
   return (
     <div className="space-y-5">
+      {/* Header */}
       <div className="flex items-center justify-between flex-wrap gap-3">
         <div>
           <h1 className="text-2xl font-bold tracking-tight flex items-center gap-2">
             <Sparkles className="w-6 h-6 text-primary" /> Smart Signals
           </h1>
           <p className="text-muted-foreground text-sm mt-0.5">
-            AI-generated trading signals valid for 20 min · Download as shareable flyers
+            AI signals valid 20 min · Download branded PNG flyers
           </p>
         </div>
         <div className="flex items-center gap-3">
-          <Badge variant="outline" className="font-mono text-xs gap-1">
+          <span className="text-xs font-mono text-muted-foreground">
             {readyMarkets}/{totalMarkets} markets ready
-          </Badge>
+          </span>
           <button
             onClick={refresh}
             disabled={readyMarkets === 0}
-            className="flex items-center gap-2 px-4 py-2 bg-primary text-primary-foreground rounded-md text-sm font-bold hover:bg-primary/90 disabled:opacity-40 transition-all"
-            style={{ boxShadow: "0 0 15px rgba(0,209,209,0.3)" }}
+            className="flex items-center gap-2 px-4 py-2 bg-primary text-primary-foreground rounded-md text-sm font-bold hover:bg-primary/90 disabled:opacity-40 transition-colors"
           >
             <RefreshCw className="w-4 h-4" /> Generate Signals
           </button>
         </div>
       </div>
 
-      {signals.length === 0 ? (
+      {/* Category Filter Tabs */}
+      <div className="flex items-center gap-1.5 flex-wrap border-b border-border pb-3">
+        <button
+          onClick={() => setCategoryFilter("all")}
+          className={`px-3 py-1.5 rounded-md text-xs font-bold transition-colors ${
+            categoryFilter === "all"
+              ? "bg-primary text-primary-foreground"
+              : "text-muted-foreground hover:text-foreground hover:bg-muted"
+          }`}
+        >
+          All Markets
+          {signals.length > 0 && (
+            <span className="ml-1.5 text-[10px] opacity-70">{signals.length}</span>
+          )}
+        </button>
+
+        {(Object.keys(MARKETS_BY_CATEGORY) as MarketCategory[]).map((cat) => (
+          <button
+            key={cat}
+            onClick={() => setCategoryFilter(cat)}
+            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-bold transition-colors border ${
+              categoryFilter === cat
+                ? "bg-primary text-primary-foreground border-primary"
+                : `${CAT_COLORS[cat]} hover:opacity-80`
+            }`}
+          >
+            {CATEGORY_ICONS[cat]}
+            {CAT_LABELS[cat]}
+            {catCounts[cat] > 0 && (
+              <span className="text-[10px] opacity-80">{catCounts[cat]}</span>
+            )}
+          </button>
+        ))}
+      </div>
+
+      {/* Empty / Loading */}
+      {signals.length === 0 && (
         <div className="flex flex-col items-center justify-center py-24 text-muted-foreground space-y-3">
-          <Sparkles className="w-12 h-12 opacity-20" />
-          <p className="font-bold">Collecting market data...</p>
-          <p className="text-sm">Need at least 30 ticks per market. Click "Generate Signals" when ready.</p>
-          <div className="w-64 h-1.5 bg-muted rounded-full overflow-hidden">
+          <Sparkles className="w-10 h-10 opacity-20" />
+          <p className="font-bold text-sm">Collecting market data...</p>
+          <p className="text-xs">Need 30+ ticks per market · click Generate Signals when ready</p>
+          <div className="w-56 h-1.5 bg-muted rounded-full overflow-hidden">
             <div className="h-full bg-primary rounded-full transition-all" style={{ width: `${(readyMarkets / Math.max(totalMarkets, 1)) * 100}%` }} />
           </div>
-          <p className="text-xs font-mono">{readyMarkets} / {totalMarkets} markets ready</p>
-        </div>
-      ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
-          {signals.map((sig) => {
-            const theme = THEMES.find((t) => t.id === sig.theme)!;
-            const tradeColor = Object.entries(CONTRACT_COLORS).find(([k]) => sig.tradeType.includes(k))?.[1] ?? "text-primary";
-            return (
-              <Card
-                key={sig.id}
-                className="border-2 border-border hover:border-primary/40 transition-all"
-                style={{ boxShadow: "inset 0 0 30px rgba(0,209,209,0.03)" }}
-              >
-                <CardHeader className="pb-2 border-b border-border">
-                  <div className="flex items-start justify-between gap-2">
-                    <div>
-                      <div className="text-xs text-muted-foreground font-mono uppercase">{sig.marketName}</div>
-                      <div className={`text-2xl font-black font-mono ${tradeColor}`}>{sig.tradeType}</div>
-                    </div>
-                    <div className="flex flex-col items-end gap-1">
-                      <Badge variant="outline" className={`text-[10px] ${THEME_BADGES[sig.theme]}`}>
-                        {theme.name}
-                      </Badge>
-                      <div className="text-right">
-                        <div className="text-lg font-black text-primary font-mono">{sig.confidence}%</div>
-                        <div className="text-[10px] text-muted-foreground">confidence</div>
-                      </div>
-                    </div>
-                  </div>
-                </CardHeader>
-
-                <CardContent className="pt-3 space-y-3">
-                  <div className="grid grid-cols-2 gap-2 text-[11px]">
-                    <div className="bg-muted rounded p-2">
-                      <div className="text-muted-foreground">Entry</div>
-                      <div className="font-bold font-mono">{sig.entryDigit}</div>
-                    </div>
-                    <div className="bg-muted rounded p-2">
-                      <div className="text-muted-foreground flex items-center gap-1"><Zap className="w-2.5 h-2.5" />Ticks</div>
-                      <div className="font-bold font-mono">{sig.ticks}</div>
-                    </div>
-                  </div>
-
-                  <div className="bg-muted/50 rounded p-2 text-[10px] text-muted-foreground leading-relaxed">
-                    {sig.reason}
-                  </div>
-
-                  <CountdownTimer validUntil={sig.validUntil} />
-
-                  <div className="grid grid-cols-2 gap-2">
-                    <button
-                      onClick={() => drawFlyer(sig, logoUrl)}
-                      className="flex items-center justify-center gap-1.5 py-2 bg-primary/10 border border-primary/30 text-primary rounded text-xs font-bold hover:bg-primary/20 transition-all"
-                    >
-                      <Download className="w-3.5 h-3.5" /> Download Flyer
-                    </button>
-                    <div className="flex items-center justify-center gap-1.5 py-2 bg-muted border border-border rounded text-[10px] text-muted-foreground">
-                      <Clock className="w-3 h-3" />
-                      {new Date(sig.generatedAt).toLocaleTimeString()}
-                    </div>
-                  </div>
-                </CardContent>
-              </Card>
-            );
-          })}
+          <p className="text-[11px] font-mono">{readyMarkets} / {totalMarkets} ready</p>
         </div>
       )}
 
-      {/* Flyer theme preview */}
-      <Card className="bg-card border-border">
-        <CardHeader className="py-3 px-4 border-b border-border">
-          <CardTitle className="text-xs font-medium text-muted-foreground uppercase">Flyer Themes</CardTitle>
-        </CardHeader>
-        <CardContent className="p-4 flex flex-wrap gap-3">
-          {THEMES.map((t) => (
-            <div key={t.id} className="flex items-center gap-2">
-              <div className="w-4 h-4 rounded-full border-2" style={{ backgroundColor: t.primary, borderColor: t.accent }} />
-              <span className="text-xs font-mono text-muted-foreground">{t.name}</span>
+      {signals.length > 0 && filtered.length === 0 && (
+        <div className="flex flex-col items-center justify-center py-16 text-muted-foreground space-y-2">
+          <p className="font-bold text-sm">No signals for {CAT_LABELS[categoryFilter as MarketCategory]}</p>
+          <p className="text-xs">Switch to "All Markets" or generate fresh signals</p>
+        </div>
+      )}
+
+      {/* Signal Grid */}
+      {filtered.length > 0 && (
+        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">
+          {filtered.map((sig) => (
+            <div
+              key={sig.id}
+              className="bg-card border border-border rounded-lg overflow-hidden hover:border-border/70 transition-colors"
+            >
+              {/* Card header */}
+              <div className="flex items-center justify-between px-4 py-3 border-b border-border bg-muted/30">
+                <div className="min-w-0">
+                  <div className="text-[10px] text-muted-foreground font-mono uppercase truncate">{sig.marketName}</div>
+                  <div className={`text-xl font-black font-mono leading-tight ${contractColor(sig.tradeType)}`}>
+                    {sig.tradeType}
+                  </div>
+                </div>
+                <div className="flex flex-col items-end gap-1 flex-shrink-0 ml-2">
+                  <Badge variant="outline" className={`text-[9px] px-1.5 ${CAT_COLORS[sig.category]}`}>
+                    {CAT_LABELS[sig.category]}
+                  </Badge>
+                  <div className="text-xl font-black text-primary font-mono">{sig.confidence}%</div>
+                </div>
+              </div>
+
+              {/* Card body */}
+              <div className="px-4 py-3 space-y-3">
+                <div className="grid grid-cols-2 gap-2 text-[11px]">
+                  <div className="bg-muted rounded px-2 py-1.5">
+                    <div className="text-muted-foreground">Entry</div>
+                    <div className="font-bold font-mono">{sig.entryDigit}</div>
+                  </div>
+                  <div className="bg-muted rounded px-2 py-1.5">
+                    <div className="text-muted-foreground flex items-center gap-1">
+                      <Zap className="w-2.5 h-2.5" /> Ticks
+                    </div>
+                    <div className="font-bold font-mono">{sig.ticks}</div>
+                  </div>
+                </div>
+
+                <div className="text-[10px] text-muted-foreground leading-relaxed bg-muted/50 rounded px-2 py-1.5">
+                  {sig.reason}
+                </div>
+
+                <CountdownTimer validUntil={sig.validUntil} />
+
+                <div className="grid grid-cols-2 gap-2">
+                  <button
+                    onClick={() => drawFlyer(sig, logoUrl)}
+                    className="flex items-center justify-center gap-1.5 py-2 border border-primary/40 text-primary rounded text-xs font-bold hover:bg-primary/10 transition-colors"
+                  >
+                    <Download className="w-3.5 h-3.5" /> Download Flyer
+                  </button>
+                  <div className="flex items-center justify-center gap-1.5 py-2 bg-muted rounded text-[10px] text-muted-foreground">
+                    <Clock className="w-3 h-3" />
+                    {new Date(sig.generatedAt).toLocaleTimeString()}
+                  </div>
+                </div>
+              </div>
             </div>
           ))}
-          <span className="text-xs text-muted-foreground ml-2 italic">· Each signal gets a unique futuristic theme</span>
-        </CardContent>
-      </Card>
+        </div>
+      )}
+
+      {/* Flyer themes legend */}
+      {signals.length > 0 && (
+        <div className="flex flex-wrap items-center gap-3 pt-1 text-[10px] text-muted-foreground border-t border-border">
+          <span className="font-bold uppercase">Flyer themes:</span>
+          {THEMES.map((t) => (
+            <div key={t.id} className="flex items-center gap-1.5">
+              <div className="w-3 h-3 rounded-full" style={{ backgroundColor: t.primary }} />
+              <span>{t.name}</span>
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   );
 }
