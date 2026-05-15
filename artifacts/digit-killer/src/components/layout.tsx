@@ -9,13 +9,15 @@ import {
   BrainCircuit, 
   TrendingUp, 
   Settings,
-  Cpu
+  Cpu,
+  BrainCog
 } from "lucide-react";
 import { MARKETS } from "@/hooks/useDerivWebSocket";
 import { useMarket } from "@/lib/market-context";
 
 const navItems = [
   { name: "Dashboard", href: "/", icon: LayoutDashboard },
+  { name: "Smart Trade", href: "/smart-trade", icon: BrainCog },
   { name: "Market Scanner", href: "/scanner", icon: Activity },
   { name: "AI Signals", href: "/signals", icon: Zap },
   { name: "Tick Generator", href: "/tick-generator", icon: Cpu },
