@@ -238,26 +238,59 @@ export default function WideEye() {
         </CardContent>
       </Card>
 
-      {/* 120 Tick Bubble Grid */}
+      {/* Rolling Tick Stream — constant tickWindow slots */}
       <Card className="bg-card border-border">
         <CardHeader className="py-3 px-5 border-b border-border flex flex-row items-center justify-between">
           <CardTitle className="text-xs font-bold uppercase text-muted-foreground">
-            Last {Math.min(displayDigits.length, tickWindow)} Ticks · Digit Stream
+            Rolling {tickWindow}-Tick Stream
           </CardTitle>
-          <span className="text-xs font-mono text-muted-foreground">
-            {displayDigits.length}/{tickWindow}
-          </span>
+          <div className="flex items-center gap-3">
+            {displayDigits.length < tickWindow && (
+              <span className="text-[10px] text-yellow-400 font-mono animate-pulse">
+                filling… {displayDigits.length}/{tickWindow}
+              </span>
+            )}
+            {displayDigits.length >= tickWindow && (
+              <span className="text-[10px] text-green-400 font-mono">● live rolling window</span>
+            )}
+          </div>
         </CardHeader>
         <CardContent className="p-4">
+          {/* Fixed grid: always tickWindow slots — empty slots are grey placeholders */}
           <div className="flex flex-wrap gap-1">
-            {displayDigits.slice(-120).map((d, i, arr) => {
-              const isLatest = i === arr.length - 1;
+            {Array.from({ length: tickWindow }, (_, slotIndex) => {
+              // slots are filled right-to-left: last slot = most recent tick
+              const filled = displayDigits.length;
+              const emptySlots = tickWindow - filled;
+              const digitIndex = slotIndex - emptySlots; // index into displayDigits
+              const isLatest = slotIndex === tickWindow - 1;
+
+              if (digitIndex < 0) {
+                // unfilled placeholder
+                return (
+                  <div
+                    key={slotIndex}
+                    className="w-6 h-6 rounded-full border border-dashed border-border/40 bg-muted/20"
+                  />
+                );
+              }
+
+              const d = displayDigits[digitIndex];
               return (
-                <div key={i} className={`relative ${isLatest ? "animate-pulse" : ""}`}>
-                  <DigitBubble digit={d} size="sm" />
+                <div key={slotIndex} className="relative">
+                  <div
+                    className={`w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-black border transition-all ${isLatest ? "ring-2 ring-primary ring-offset-1 ring-offset-background" : ""}`}
+                    style={{
+                      backgroundColor: DIGIT_COLORS[d].bg,
+                      borderColor: DIGIT_COLORS[d].border,
+                      color: DIGIT_COLORS[d].text,
+                    }}
+                  >
+                    {d}
+                  </div>
                   {isLatest && (
                     <div
-                      className="absolute -top-1 left-1/2 -translate-x-1/2 w-0 h-0"
+                      className="absolute -top-1.5 left-1/2 -translate-x-1/2 w-0 h-0"
                       style={{
                         borderLeft: "5px solid transparent",
                         borderRight: "5px solid transparent",
@@ -269,10 +302,10 @@ export default function WideEye() {
               );
             })}
           </div>
-          <div className="mt-3 flex items-center gap-3 flex-wrap">
-            <span className="text-[10px] text-muted-foreground italic">
-              ▼ = current digit · Bubbles color-coded by digit value (0=indigo → 9=purple)
-            </span>
+          <div className="mt-3 flex items-center gap-4 text-[10px] text-muted-foreground">
+            <span>▼ = latest digit</span>
+            <span>· color = digit value (0 indigo → 9 purple)</span>
+            <span>· <span className="border border-dashed border-border/60 px-1 rounded">empty</span> = awaiting ticks</span>
           </div>
         </CardContent>
       </Card>
