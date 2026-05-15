@@ -172,17 +172,36 @@ export default function WideEye() {
             </div>
 
             <div>
-              <label className="text-xs font-bold text-muted-foreground uppercase mb-1.5 block">Tick Window</label>
+              <label className="text-xs font-bold text-muted-foreground uppercase mb-1.5 block">
+                Tick Window — <span className="text-primary font-black">{tickWindow} ticks</span>
+              </label>
+              {/* Preset buttons */}
+              <div className="flex items-center gap-1.5 flex-wrap mb-2">
+                {[100, 120, 200, 300, 500].map((n) => (
+                  <button
+                    key={n}
+                    onClick={() => setTickWindow(n)}
+                    className={`px-3 py-1.5 rounded text-xs font-bold border transition-colors ${
+                      tickWindow === n
+                        ? "bg-primary text-primary-foreground border-primary"
+                        : "bg-muted text-muted-foreground border-border hover:border-primary/50 hover:text-foreground"
+                    }`}
+                  >
+                    {n}
+                  </button>
+                ))}
+              </div>
+              {/* Custom input */}
               <div className="flex items-center gap-2">
                 <input
                   type="number"
                   min={50}
-                  max={500}
+                  max={1000}
                   value={tickWindow}
-                  onChange={(e) => setTickWindow(Math.max(50, Math.min(500, +e.target.value)))}
+                  onChange={(e) => setTickWindow(Math.max(50, Math.min(1000, +e.target.value)))}
                   className="w-24 bg-background border border-border text-foreground rounded-md px-3 py-2 text-sm font-mono focus:outline-none focus:border-primary"
                 />
-                <span className="text-xs text-muted-foreground font-mono">(50–500)</span>
+                <span className="text-xs text-muted-foreground font-mono">custom (50–1000)</span>
               </div>
             </div>
 
