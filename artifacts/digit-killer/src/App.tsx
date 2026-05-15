@@ -10,6 +10,7 @@ import Scanner from "@/pages/scanner";
 import Signals from "@/pages/signals";
 import TickGenerator from "@/pages/tick-generator";
 import SmartTrade from "@/pages/smart-trade";
+import Forex from "@/pages/forex";
 import Analysis from "@/pages/analysis";
 import TradeDesk from "@/pages/trade-desk";
 import Strategies from "@/pages/strategies";
@@ -27,6 +28,7 @@ function Router() {
         <Route path="/signals" component={Signals} />
         <Route path="/tick-generator" component={TickGenerator} />
         <Route path="/smart-trade" component={SmartTrade} />
+        <Route path="/forex" component={Forex} />
         <Route path="/analysis" component={Analysis} />
         <Route path="/trade-desk" component={TradeDesk} />
         <Route path="/strategies" component={Strategies} />
