@@ -8,7 +8,8 @@ import {
   Lightbulb, 
   BrainCircuit, 
   TrendingUp, 
-  Settings 
+  Settings,
+  Cpu
 } from "lucide-react";
 import { MARKETS } from "@/hooks/useDerivWebSocket";
 import { useMarket } from "@/lib/market-context";
@@ -17,6 +18,7 @@ const navItems = [
   { name: "Dashboard", href: "/", icon: LayoutDashboard },
   { name: "Market Scanner", href: "/scanner", icon: Activity },
   { name: "AI Signals", href: "/signals", icon: Zap },
+  { name: "Tick Generator", href: "/tick-generator", icon: Cpu },
   { name: "Digit Analysis", href: "/analysis", icon: Binary },
   { name: "Trade Desk", href: "/trade-desk", icon: MonitorPlay },
   { name: "Strategies", href: "/strategies", icon: Lightbulb },

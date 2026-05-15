@@ -10,6 +10,7 @@ type MarketData = {
   evenOddRatio: number; // % of even in last 50 ticks
   signal: "BUY" | "SELL" | "WAIT";
   digits: number[];
+  frequencies: number[]; // Frequency of digits 0-9 in last 50 ticks
 };
 
 export function useDerivMultiMarket() {
@@ -22,6 +23,7 @@ export function useDerivMultiMarket() {
         evenOddRatio: 50,
         signal: "WAIT",
         digits: [],
+        frequencies: new Array(10).fill(0),
       };
       return acc;
     }, {} as Record<string, MarketData>)
@@ -62,10 +64,13 @@ export function useDerivMultiMarket() {
           if (newDigits.length > 50) newDigits.shift();
           
           let evens = 0;
+          const freqCounts = new Array(10).fill(0);
           for (const d of newDigits) {
             if (d % 2 === 0) evens++;
+            freqCounts[d]++;
           }
           const evenOddRatio = newDigits.length > 0 ? Math.round((evens / newDigits.length) * 100) : 50;
+          const frequencies = freqCounts.map(count => newDigits.length > 0 ? (count / newDigits.length) * 100 : 0);
           
           let signal: "BUY" | "SELL" | "WAIT" = "WAIT";
           if (evenOddRatio > 70) signal = "BUY";
@@ -79,6 +84,7 @@ export function useDerivMultiMarket() {
               lastDigit,
               digits: newDigits,
               evenOddRatio,
+              frequencies,
               signal
             }
           };

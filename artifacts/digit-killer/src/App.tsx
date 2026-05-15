@@ -8,6 +8,7 @@ import { Layout } from "@/components/layout";
 import Dashboard from "@/pages/dashboard";
 import Scanner from "@/pages/scanner";
 import Signals from "@/pages/signals";
+import TickGenerator from "@/pages/tick-generator";
 import Analysis from "@/pages/analysis";
 import TradeDesk from "@/pages/trade-desk";
 import Strategies from "@/pages/strategies";
@@ -23,6 +24,7 @@ function Router() {
         <Route path="/" component={Dashboard} />
         <Route path="/scanner" component={Scanner} />
         <Route path="/signals" component={Signals} />
+        <Route path="/tick-generator" component={TickGenerator} />
         <Route path="/analysis" component={Analysis} />
         <Route path="/trade-desk" component={TradeDesk} />
         <Route path="/strategies" component={Strategies} />

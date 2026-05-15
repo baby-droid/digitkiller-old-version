@@ -2,11 +2,15 @@ import { useDerivWebSocket } from "@/hooks/useDerivWebSocket";
 import { useMarket } from "@/lib/market-context";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Activity, Radio, Wifi, WifiOff } from "lucide-react";
+import { Activity, Radio, Wifi, WifiOff, ExternalLink, Info, BarChart2 } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
+import { useLocation } from "wouter";
 
 export default function Dashboard() {
   const { activeMarket } = useMarket();
   const { digits, lastDigit, currentPrice, isConnected } = useDerivWebSocket(activeMarket);
+  const [, setLocation] = useLocation();
 
   const last100 = digits.slice(-100);
   const evens = last100.filter((d) => d.digit % 2 === 0).length;
@@ -14,8 +18,25 @@ export default function Dashboard() {
   const over4 = last100.filter((d) => d.digit > 4).length;
   const under5 = last100.filter((d) => d.digit < 5).length;
 
+  const openFullChart = () => {
+    window.open(`https://charts.deriv.com/deriv?symbol=${activeMarket}`, "_blank");
+  };
+
   return (
     <div className="space-y-6">
+      <div className="flex items-center justify-between">
+        <h1 className="text-2xl font-bold tracking-tight">Market Dashboard</h1>
+        <Button 
+          onClick={() => setLocation("/scanner")} 
+          variant="default"
+          className="gap-2"
+          data-testid="button-go-to-scanner"
+        >
+          <BarChart2 className="w-4 h-4" />
+          AI Scanner
+        </Button>
+      </div>
+
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
         <Card className="bg-card border-border shadow-sm">
           <CardContent className="p-6 flex flex-col justify-center h-full">
@@ -100,14 +121,36 @@ export default function Dashboard() {
       </div>
 
       <Card className="border-border overflow-hidden">
-        <CardHeader className="bg-muted/30 py-3 px-4 border-b border-border flex flex-row items-center">
-          <Radio className="w-4 h-4 text-primary mr-2" />
-          <CardTitle className="text-sm font-medium">Live Market Chart</CardTitle>
+        <CardHeader className="bg-muted/30 py-3 px-4 border-b border-border flex flex-row items-center justify-between">
+          <div className="flex items-center">
+            <Radio className="w-4 h-4 text-primary mr-2" />
+            <CardTitle className="text-sm font-medium">Live Market Chart</CardTitle>
+            <TooltipProvider>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Info className="w-4 h-4 ml-2 text-muted-foreground cursor-help" />
+                </TooltipTrigger>
+                <TooltipContent>
+                  <p>You can use the chart controls directly to add or remove indicators.</p>
+                </TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
+          </div>
+          <Button 
+            variant="ghost" 
+            size="sm" 
+            onClick={openFullChart}
+            className="h-8 gap-1 text-xs"
+            data-testid="button-open-full-chart"
+          >
+            <ExternalLink className="w-3 h-3" />
+            Open Full Chart
+          </Button>
         </CardHeader>
         <CardContent className="p-0">
           <iframe 
             src={`https://charts.deriv.com/deriv?symbol=${activeMarket}`}
-            className="w-full h-[500px] border-0"
+            className="w-full h-[650px] border-0"
             title="Deriv Live Chart"
           />
         </CardContent>
