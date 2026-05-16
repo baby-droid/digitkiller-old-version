@@ -1,0 +1,24 @@
+These cheat sheets provide an excellent foundation for analyzing **XAUUSD (Gold vs. US Dollar)**. Gold is a highly liquid, volatile asset, making it perfect for combining **Inner Circle Trader (ICT) concepts**, **Market Structure**, and **Supply/Demand mechanics** shown in your images.
+Here is a breakdown of how to synthesize the information in your images to analyze and trade XAUUSD effectively.
+## 1. Establish the Higher Timeframe Narrative (Image 2 & 5)
+Before zooming in, you must know who is in control of the market. XAUUSD trends aggressively, so fighting the trend is dangerous.
+ * **Identify the Trend:** Look at the 4-Hour or 1-Hour chart. Are you making Higher Highs and Higher Lows (Uptrend), or Lower Highs and Lower Lows (Downtrend)?
+ * **Find the Premium/Discount Equilibrium:** As shown in the ICT diagram (Image 1), draw your dealing range from the major high to the major low. Only look to buy when Gold drops into the **Discount zone** (below the 50% Equilibrium line), and only look to sell when it rallies into the **Premium zone** (above 50%).
+## 2. Locate Key Zones: Supply, Demand, & Order Blocks (Image 3, 4 & 6)
+Gold respects institutional order footprints. Instead of drawing thin support and resistance lines, look for **zones**.
+ * **Order Blocks (OB) + Fair Value Gaps (FVG):** Look for a sharp, impulsive move that leaves behind an unfilled gap (FVG). The candle just before that sharp move is your Order Block (Image 1).
+ * **Supply & Demand Formations:** Look closely at Image 6. Gold frequently forms **Rally-Base-Rally** (demand) or **Drop-Base-Drop** (supply) continuations. Mark these "Base" zones on your chart. When price returns to them, expect a reaction.
+## 3. Wait for Liquidity Sweeps (Image 1 & 2)
+Gold is notorious for "stop hunts" because it is heavily manipulated by large institutions.
+ * Look at Image 1 (**Minor SSL / Buy Stops**). Notice how price sweeps below a previous low to engineer liquidity (grabbing the stop losses of retail buyers) before reversing violently upward.
+ * In Image 2 (XAUUSD 15M), notice how price creates small structural traps before the real expansion happens. **Do not buy just because price hit support; wait for price to break below support, trap the sellers, and then push back up.**
+## 4. The Entry Execution Blueprint (Combining Image 1, 3 & 4)
+Once Gold hits your higher timeframe Demand zone or Order Block, drop down to a lower timeframe (like the 1-Minute or 3-Minute, as seen in Image 1) to hunt for your entry:
+ 1. **Market Structure Shift (MSS):** Wait for price to break the most recent lower high to the upside. This proves that buyers have taken over momentum.
+ 2. **The Return to Order Block:** Do not chase the breakout. Wait patiently for price to retest the newly formed Lower Timeframe Order Block or FVG.
+ 3. **Candlestick Confirmation:** Look for a **Bullish Engulfing** or a **Hammer/Pinbar** candle (Image 3 & 5) right inside that zone to trigger your trade.
+## 5. Strict Risk Management (Image 5)
+Because Gold moves fast, your invalidation point must be clear.
+ * **Stop Loss:** Always place your stop loss slightly below the low of the structural Order Block (as shown at the bottom of Image 1 and 5). If it breaks that low, your trade idea is invalid.
+ * **Take Profit Targets:** Target the next major pool of liquidity. This could be **Relative Equal Highs** or the **Premium 50% Equilibrium Line** of the higher timeframe. Aim for a minimum Risk-to-Reward ratio of **1:2 or 1:3**.
+Which of these specific concepts—like mapping out the Market Structure Shift (MSS) or identifying Fair Value Gaps (FVG)—would you like to practice identifying on a live Gold chart first?
