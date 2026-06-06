@@ -133,7 +133,7 @@ function DigitCircles({ digits, lastDigit }: { digits: number[]; lastDigit: numb
                   className="h-full rounded-full"
                   style={{
                     width: `${barW}%`,
-                    backgroundColor: isCurrent ? "#a855f7" : BAR_COLOR(rank),
+                    backgroundColor: D_COLORS[i].bg,
                     transition: "width 0.5s ease",
                   }}
                 />
