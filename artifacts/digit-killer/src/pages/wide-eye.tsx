@@ -502,13 +502,13 @@ export default function WideEye() {
             </div>
           </div>
 
-          {/* Recent 100 bubbles — E / O labels */}
+          {/* Recent 20 bubbles — E / O labels */}
           <div>
             <div className="text-xs font-bold text-muted-foreground mb-2">
-              Recent {Math.min(recent100.length, 100)} ticks
+              Recent {Math.min(recent100.length, 20)} ticks
             </div>
             <div className="flex flex-wrap gap-1">
-              {recent100.map((d, i) => {
+              {recent100.slice(-20).map((d, i) => {
                 const isEven = d % 2 === 0;
                 return (
                   <div
