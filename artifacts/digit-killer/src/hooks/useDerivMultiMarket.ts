@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from "react";
-import { MARKETS, TickData } from "./useDerivWebSocket";
+import { MARKETS, extractDigit } from "./useDerivWebSocket";
 
 const WS_URL = "wss://ws.binaryws.com/websockets/v3?app_id=1089";
 
@@ -7,10 +7,10 @@ type MarketData = {
   isConnected: boolean;
   price: number | null;
   lastDigit: number | null;
-  evenOddRatio: number; // % of even in last 50 ticks
+  evenOddRatio: number;
   signal: "BUY" | "SELL" | "WAIT";
   digits: number[];
-  frequencies: number[]; // Frequency of digits 0-9 in last 50 ticks
+  frequencies: number[];
 };
 
 export function useDerivMultiMarket() {
@@ -29,6 +29,15 @@ export function useDerivMultiMarket() {
     }, {} as Record<string, MarketData>)
   );
 
+  // Per-symbol pip_size cache — filled from the first tick of each symbol
+  const pipSizes = useRef<Record<string, number>>(
+    MARKETS.reduce((acc, m) => {
+      // Seed with known pip sizes so digit 0 works from the very first tick
+      acc[m.symbol] = m.pipSize ?? 4;
+      return acc;
+    }, {} as Record<string, number>)
+  );
+
   const wsRef = useRef<WebSocket | null>(null);
 
   useEffect(() => {
@@ -41,7 +50,7 @@ export function useDerivMultiMarket() {
         for (const key in next) next[key].isConnected = true;
         return next;
       });
-      
+      // Subscribe to live ticks for every market
       MARKETS.forEach((m) => {
         ws.send(JSON.stringify({ ticks: m.symbol, subscribe: 1 }));
       });
@@ -49,29 +58,35 @@ export function useDerivMultiMarket() {
 
     ws.onmessage = (event) => {
       const data = JSON.parse(event.data);
-      if (data.tick) {
-        const symbol = data.tick.symbol;
-        const price = data.tick.quote;
-        
-        const priceStr = price.toFixed(Math.max(2, (price.toString().split(".")[1] || "").length));
-        const lastDigit = parseInt(priceStr.replace(".", "").slice(-1));
+
+      if (data.msg_type === "tick" && data.tick) {
+        const symbol   = data.tick.symbol as string;
+        const price    = data.tick.quote  as number;
+
+        // Update pip_size from the live tick if the API provides it
+        if (typeof data.tick.pip_size === "number") {
+          pipSizes.current[symbol] = data.tick.pip_size;
+        }
+        const pip      = pipSizes.current[symbol] ?? 4;
+        const lastDigit = extractDigit(price, pip);
 
         setMarketsData((prev) => {
           const m = prev[symbol];
           if (!m) return prev;
-          
+
           const newDigits = [...m.digits, lastDigit];
-          if (newDigits.length > 50) newDigits.shift();
-          
+          if (newDigits.length > 100) newDigits.shift();
+
           let evens = 0;
           const freqCounts = new Array(10).fill(0);
           for (const d of newDigits) {
             if (d % 2 === 0) evens++;
             freqCounts[d]++;
           }
-          const evenOddRatio = newDigits.length > 0 ? Math.round((evens / newDigits.length) * 100) : 50;
-          const frequencies = freqCounts.map(count => newDigits.length > 0 ? (count / newDigits.length) * 100 : 0);
-          
+          const n            = newDigits.length || 1;
+          const evenOddRatio = Math.round((evens / n) * 100);
+          const frequencies  = freqCounts.map((c) => (c / n) * 100);
+
           let signal: "BUY" | "SELL" | "WAIT" = "WAIT";
           if (evenOddRatio > 70) signal = "BUY";
           else if (evenOddRatio < 30) signal = "SELL";
@@ -85,8 +100,8 @@ export function useDerivMultiMarket() {
               digits: newDigits,
               evenOddRatio,
               frequencies,
-              signal
-            }
+              signal,
+            },
           };
         });
       }
@@ -100,9 +115,7 @@ export function useDerivMultiMarket() {
       });
     };
 
-    return () => {
-      ws.close();
-    };
+    return () => { ws.close(); };
   }, []);
 
   return marketsData;
