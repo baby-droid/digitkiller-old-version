@@ -124,7 +124,7 @@ function DigitCircles({ digits, lastDigit }: { digits: number[]; lastDigit: numb
                 {pcts[i].toFixed(1)}%
               </span>
 
-              {/* ── Frequency bar: green=1st, blue=2nd, yellow=2nd-last, red=last ── */}
+              {/* ── Frequency bar ── */}
               <div
                 className="w-full rounded-full overflow-hidden"
                 style={{ height: 4, backgroundColor: "rgba(255,255,255,0.08)" }}
@@ -137,6 +137,22 @@ function DigitCircles({ digits, lastDigit }: { digits: number[]; lastDigit: numb
                     transition: "width 0.5s ease",
                   }}
                 />
+              </div>
+
+              {/* ── Rank dot: green=highest, blue=2nd highest, yellow=2nd lowest, red=lowest ── */}
+              <div className="h-3 flex items-center justify-center">
+                {rank === 0 && (
+                  <div className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: "#22c55e", boxShadow: "0 0 4px #22c55e" }} />
+                )}
+                {rank === 1 && (
+                  <div className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: "#3b82f6", boxShadow: "0 0 4px #3b82f6" }} />
+                )}
+                {rank === 8 && (
+                  <div className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: "#eab308", boxShadow: "0 0 4px #eab308" }} />
+                )}
+                {rank === 9 && (
+                  <div className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: "#ef4444", boxShadow: "0 0 4px #ef4444" }} />
+                )}
               </div>
             </div>
           );
@@ -486,27 +502,29 @@ export default function WideEye() {
             </div>
           </div>
 
-          {/* Recent 100 bubbles showing actual digit values */}
+          {/* Recent 100 bubbles — E / O labels */}
           <div>
             <div className="text-xs font-bold text-muted-foreground mb-2">
-              Recent {Math.min(recent100.length, 100)} ticks · E=even O=odd
+              Recent {Math.min(recent100.length, 100)} ticks
             </div>
             <div className="flex flex-wrap gap-1">
-              {recent100.map((d, i) => (
-                <div
-                  key={i}
-                  className="w-6 h-6 rounded-full flex items-center justify-center text-[9px] font-black"
-                  style={{
-                    backgroundColor: d % 2 === 0 ? "#15803d" : "#991b1b",
-                    borderColor:     d % 2 === 0 ? "#22c55e" : "#ef4444",
-                    color: "#fff",
-                    border: "1px solid",
-                  }}
-                  title={`Digit ${d}`}
-                >
-                  {d}
-                </div>
-              ))}
+              {recent100.map((d, i) => {
+                const isEven = d % 2 === 0;
+                return (
+                  <div
+                    key={i}
+                    className="w-7 h-7 rounded-full flex items-center justify-center text-[11px] font-black border"
+                    style={{
+                      backgroundColor: isEven ? "#15803d" : "#991b1b",
+                      borderColor:     isEven ? "#22c55e" : "#ef4444",
+                      color: "#fff",
+                    }}
+                    title={`Digit ${d}`}
+                  >
+                    {isEven ? "E" : "O"}
+                  </div>
+                );
+              })}
             </div>
           </div>
         </CardContent>
@@ -609,19 +627,19 @@ export default function WideEye() {
             <span className="text-muted-foreground text-xs">({((equalCount / total) * 100).toFixed(1)}%)</span>
           </div>
 
-          {/* Recent 100 showing actual digit values */}
+          {/* Recent 20 ticks — U / = / O labels */}
           <div>
             <div className="text-xs font-bold text-muted-foreground mb-2">
-              Recent {Math.min(recent100.length, 100)} ticks · U=under ={overUnderThreshold} O=over
+              Recent 20 ticks
             </div>
             <div className="flex flex-wrap gap-1">
-              {recent100.map((d, i) => {
+              {displayDigits.slice(-20).map((d, i) => {
                 const isUnder = d < overUnderThreshold;
                 const isOver  = d > overUnderThreshold;
                 return (
                   <div
                     key={i}
-                    className="w-6 h-6 rounded-full flex items-center justify-center text-[9px] font-black border"
+                    className="w-7 h-7 rounded-full flex items-center justify-center text-[11px] font-black border"
                     style={{
                       backgroundColor: isUnder ? "#1e3a8a" : isOver ? "#991b1b" : "#374151",
                       borderColor:     isUnder ? "#3b82f6" : isOver ? "#ef4444" : "#6b7280",
@@ -629,7 +647,7 @@ export default function WideEye() {
                     }}
                     title={`Digit ${d}`}
                   >
-                    {d}
+                    {isUnder ? "U" : isOver ? "O" : "="}
                   </div>
                 );
               })}
