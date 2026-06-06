@@ -168,10 +168,11 @@ export default function TickGenerator() {
 
   return (
     <div className="space-y-5">
+      <div className="h-0.5 rounded-full -mb-2" style={{ background: "linear-gradient(to right,#f97316,transparent)" }} />
       <div className="flex items-start justify-between flex-wrap gap-3">
         <div>
-          <h1 className="text-2xl font-bold tracking-tight flex items-center gap-2">
-            <Cpu className="w-6 h-6 text-primary" /> Signal Generator
+          <h1 className="text-2xl font-bold tracking-tight flex items-center gap-2" style={{ color: "#f97316" }}>
+            <Cpu className="w-6 h-6" style={{ color: "#f97316" }} /> Signal Generator
           </h1>
           <p className="text-muted-foreground text-sm">
             Real-time signals for {mkt?.name ?? selectedMarket} · {digits.length} ticks loaded

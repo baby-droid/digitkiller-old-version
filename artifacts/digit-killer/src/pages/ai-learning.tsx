@@ -217,9 +217,10 @@ export default function AILearning() {
 
   return (
     <div className="space-y-5">
+      <div className="h-0.5 rounded-full -mb-2" style={{ background: "linear-gradient(to right,#0ea5e9,transparent)" }} />
       <div>
-        <h1 className="text-2xl font-bold tracking-tight flex items-center gap-2">
-          <BrainCircuit className="w-6 h-6 text-primary" /> AI Learning Center
+        <h1 className="text-2xl font-bold tracking-tight flex items-center gap-2" style={{ color: "#0ea5e9" }}>
+          <BrainCircuit className="w-6 h-6" style={{ color: "#0ea5e9" }} /> AI Learning Center
         </h1>
         <p className="text-muted-foreground text-sm">Upload trading knowledge, ask AI anything, generate signal flyers</p>
       </div>

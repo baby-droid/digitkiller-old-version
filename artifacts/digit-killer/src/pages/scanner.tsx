@@ -148,10 +148,11 @@ export default function Scanner() {
 
   return (
     <div className="space-y-5">
+      <div className="h-0.5 rounded-full -mb-2" style={{ background: "linear-gradient(to right,#a855f7,transparent)" }} />
       <div className="flex items-start justify-between flex-wrap gap-3">
         <div>
-          <h1 className="text-2xl font-bold tracking-tight flex items-center gap-2">
-            <Brain className="w-6 h-6 text-primary" /> Market Scanner
+          <h1 className="text-2xl font-bold tracking-tight flex items-center gap-2" style={{ color: "#a855f7" }}>
+            <Brain className="w-6 h-6" style={{ color: "#a855f7" }} /> Market Scanner
           </h1>
           <p className="text-muted-foreground text-sm">Search any strategy — see which markets qualify right now</p>
         </div>

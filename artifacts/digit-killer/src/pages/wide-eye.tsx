@@ -9,7 +9,10 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Eye, Activity } from "lucide-react";
 
-/* ─── per-digit colour palette (0→9) ───────────────────────────────────── */
+/* ── page accent colour ─────────────────────────────────────────────────── */
+const ACCENT = "#16a34a"; // dark green
+
+/* ── per-digit colour palette ───────────────────────────────────────────── */
 const D_COLORS = [
   { bg: "#4f46e5", border: "#6366f1", text: "#fff" },
   { bg: "#2563eb", border: "#3b82f6", text: "#fff" },
@@ -23,141 +26,151 @@ const D_COLORS = [
   { bg: "#9333ea", border: "#a855f7", text: "#fff" },
 ];
 
-/* ─── Deriv-style digit circle row ─────────────────────────────────────── */
-function DigitCircles({
-  digits,
-  lastDigit,
-  window: win,
-}: {
-  digits: number[];
-  lastDigit: number | null;
-  window: number;
-}) {
-  const slice = digits.slice(-win);
-  const total = slice.length || 1;
+/* ── rank colours for bars ──────────────────────────────────────────────── */
+const BAR_COLOR = (rank: number) =>
+  rank === 0 ? "#22c55e"  // green  – highest
+  : rank === 1 ? "#3b82f6" // blue   – 2nd highest
+  : rank === 8 ? "#eab308" // yellow – 2nd lowest
+  : rank === 9 ? "#ef4444" // red    – lowest
+  : "rgba(255,255,255,0.18)";
 
+/* ── Digit Circles ──────────────────────────────────────────────────────── */
+function DigitCircles({ digits, lastDigit }: { digits: number[]; lastDigit: number | null }) {
+  const total  = digits.length || 1;
   const counts = new Array(10).fill(0);
-  slice.forEach((d) => counts[d]++);
+  digits.forEach((d) => counts[d]++);
   const pcts = counts.map((c) => (c / total) * 100);
+  const maxPct = Math.max(...pcts);
 
-  const maxD = pcts.indexOf(Math.max(...pcts));
-  const minD = pcts.indexOf(Math.min(...pcts));
+  /* rank 0 = highest freq, rank 9 = lowest */
+  const ranked = [...pcts]
+    .map((p, i) => ({ p, i }))
+    .sort((a, b) => b.p - a.p)
+    .map((o, rank) => ({ ...o, rank }));
+  const rankOf: Record<number, number> = {};
+  ranked.forEach(({ i, rank }) => { rankOf[i] = rank; });
 
   return (
     <div className="w-full">
-      {/* circles row */}
-      <div className="flex justify-between items-end gap-1">
+      <div className="flex justify-between items-end gap-0.5">
         {Array.from({ length: 10 }, (_, i) => {
           const isCurrent = lastDigit === i;
-          const isMost    = i === maxD && !isCurrent;
-          const isLeast   = i === minD && !isCurrent;
+          const rank      = rankOf[i];
+          const sz        = Math.round(Math.max(36, Math.min(62, 40 + (pcts[i] - 10) * 2.8)));
 
-          /* size: 40 px base, scale by frequency vs 10 % baseline */
-          const sz = Math.round(Math.max(36, Math.min(64, 40 + (pcts[i] - 10) * 3)));
-
-          /* colours */
           let bgColor     = "transparent";
           let borderColor = "rgba(255,255,255,0.15)";
           let textColor   = "rgba(255,255,255,0.55)";
           let glow        = "none";
-          let fontWeight  = "600";
+          let fw          = "600";
 
           if (isCurrent) {
-            bgColor     = "#00d1d1";
-            borderColor = "#00d1d1";
-            textColor   = "#000";
-            glow        = "0 0 18px rgba(0,209,209,0.7)";
-            fontWeight  = "900";
-          } else if (isMost) {
-            bgColor     = "#2563eb";
-            borderColor = "#3b82f6";
-            textColor   = "#fff";
-            glow        = "0 0 12px rgba(37,99,235,0.5)";
-            fontWeight  = "800";
-          } else if (isLeast) {
-            bgColor     = "#dc2626";
-            borderColor = "#ef4444";
-            textColor   = "#fff";
-            glow        = "0 0 10px rgba(220,38,38,0.4)";
-            fontWeight  = "700";
+            bgColor = "#00d1d1"; borderColor = "#00d1d1";
+            textColor = "#000"; glow = "0 0 18px rgba(0,209,209,0.7)"; fw = "900";
+          } else if (rank === 0) {
+            bgColor = "#15803d"; borderColor = "#22c55e";
+            textColor = "#fff"; glow = "0 0 10px rgba(34,197,94,0.4)"; fw = "800";
+          } else if (rank === 9) {
+            bgColor = "#dc2626"; borderColor = "#ef4444";
+            textColor = "#fff"; glow = "0 0 10px rgba(220,38,38,0.35)"; fw = "700";
           }
 
+          const barW = maxPct > 0 ? (pcts[i] / maxPct) * 100 : 0;
+
           return (
-            <div key={i} className="flex flex-col items-center gap-1 flex-1">
-              {/* indicator tab above current digit */}
-              <div className="h-4 flex items-end justify-center">
+            <div key={i} className="flex flex-col items-center gap-0.5 flex-1">
+              {/* ── Purple triangle cursor (only on current digit) ── */}
+              <div className="h-5 flex items-end justify-center">
                 {isCurrent && (
                   <div
-                    className="rounded-sm"
                     style={{
-                      width: 10,
-                      height: 6,
-                      backgroundColor: "#00d1d1",
-                      boxShadow: "0 0 6px rgba(0,209,209,0.8)",
+                      width: 0, height: 0,
+                      borderLeft: "7px solid transparent",
+                      borderRight: "7px solid transparent",
+                      borderTop: "12px solid #a855f7",
+                      filter: "drop-shadow(0 0 5px rgba(168,85,247,0.9))",
+                      transition: "all 0.3s ease",
                     }}
-                  />
-                )}
-                {isMost && !isCurrent && (
-                  <div
-                    className="rounded-sm"
-                    style={{ width: 8, height: 5, backgroundColor: "#3b82f6" }}
                   />
                 )}
               </div>
 
-              {/* the circle */}
+              {/* ── Circle ── */}
               <div
-                className="rounded-full flex items-center justify-center transition-all duration-300 select-none border-2"
+                className="rounded-full flex items-center justify-center border-2 select-none"
                 style={{
-                  width:  sz,
-                  height: sz,
+                  width: sz, height: sz,
                   backgroundColor: bgColor,
                   borderColor,
                   color: textColor,
                   boxShadow: glow,
-                  fontSize: sz >= 52 ? 20 : sz >= 44 ? 17 : 14,
-                  fontWeight,
+                  fontSize: sz >= 52 ? 19 : sz >= 44 ? 16 : 13,
+                  fontWeight: fw,
+                  transition: "all 0.3s ease",
                 }}
               >
                 {i}
               </div>
 
-              {/* percentage label */}
+              {/* ── Pct label ── */}
               <span
                 className="font-mono text-center leading-none"
                 style={{
-                  fontSize: 10,
-                  color: isCurrent ? "#00d1d1" : isMost ? "#60a5fa" : isLeast ? "#f87171" : "rgba(255,255,255,0.45)",
-                  fontWeight: isCurrent || isMost ? 700 : 400,
+                  fontSize: 9,
+                  color: isCurrent ? "#00d1d1" : rank === 0 ? "#4ade80" : rank === 9 ? "#f87171" : "rgba(255,255,255,0.4)",
+                  fontWeight: isCurrent || rank <= 1 || rank >= 8 ? 700 : 400,
                 }}
               >
                 {pcts[i].toFixed(1)}%
               </span>
+
+              {/* ── Frequency bar: green=1st, blue=2nd, yellow=2nd-last, red=last ── */}
+              <div
+                className="w-full rounded-full overflow-hidden"
+                style={{ height: 4, backgroundColor: "rgba(255,255,255,0.08)" }}
+              >
+                <div
+                  className="h-full rounded-full"
+                  style={{
+                    width: `${barW}%`,
+                    backgroundColor: isCurrent ? "#a855f7" : BAR_COLOR(rank),
+                    transition: "width 0.5s ease",
+                  }}
+                />
+              </div>
             </div>
           );
         })}
       </div>
 
       {/* legend */}
-      <div className="flex items-center gap-4 mt-3 text-[10px] text-muted-foreground flex-wrap">
+      <div className="flex flex-wrap gap-3 mt-3 text-[9px] text-muted-foreground">
         <span className="flex items-center gap-1">
-          <span className="inline-block w-2.5 h-2 rounded-sm" style={{ backgroundColor: "#00d1d1" }} />
-          current digit
+          <span className="inline-block w-3 h-1 rounded-full" style={{ backgroundColor: "#a855f7" }} />
+          current
         </span>
         <span className="flex items-center gap-1">
-          <span className="inline-block w-2.5 h-2 rounded-sm" style={{ backgroundColor: "#2563eb" }} />
-          most frequent ({maxD} · {pcts[maxD].toFixed(1)}%)
+          <span className="inline-block w-3 h-1 rounded-full bg-green-500" />
+          highest
         </span>
         <span className="flex items-center gap-1">
-          <span className="inline-block w-2.5 h-2 rounded-sm" style={{ backgroundColor: "#dc2626" }} />
-          least frequent ({minD} · {pcts[minD].toFixed(1)}%)
+          <span className="inline-block w-3 h-1 rounded-full" style={{ backgroundColor: "#3b82f6" }} />
+          2nd highest
+        </span>
+        <span className="flex items-center gap-1">
+          <span className="inline-block w-3 h-1 rounded-full" style={{ backgroundColor: "#eab308" }} />
+          2nd lowest
+        </span>
+        <span className="flex items-center gap-1">
+          <span className="inline-block w-3 h-1 rounded-full bg-red-500" />
+          lowest
         </span>
       </div>
     </div>
   );
 }
 
-/* ─── Triangle indicator ───────────────────────────────────────────────── */
+/* ── Triangle track indicator ───────────────────────────────────────────── */
 function TriangleIndicator({ digit }: { digit: number | null }) {
   const pct = digit !== null ? (digit / 9) * 100 : 0;
   return (
@@ -168,17 +181,18 @@ function TriangleIndicator({ digit }: { digit: number | null }) {
           className="absolute inset-x-0 h-1 rounded-full opacity-40"
           style={{ background: "linear-gradient(to right,#4f46e5,#2563eb,#0891b2,#059669,#65a30d,#d97706,#ea580c,#dc2626,#db2777,#9333ea)" }}
         />
+        {/* purple triangle cursor */}
         <div
           className="absolute top-0 transition-all duration-300 ease-out"
-          style={{ left: `calc(${pct}% - 8px)`, marginLeft: digit === 0 ? "4px" : digit === 9 ? "-4px" : "0" }}
+          style={{ left: `calc(${pct}% - 7px)`, marginLeft: digit === 0 ? "4px" : digit === 9 ? "-4px" : "0" }}
         >
           <div
-            className="w-0 h-0"
             style={{
-              borderLeft: "8px solid transparent",
-              borderRight: "8px solid transparent",
-              borderTop: `14px solid ${digit !== null ? D_COLORS[digit].border : "#666"}`,
-              filter: digit !== null ? `drop-shadow(0 0 4px ${D_COLORS[digit].border})` : "none",
+              width: 0, height: 0,
+              borderLeft: "7px solid transparent",
+              borderRight: "7px solid transparent",
+              borderTop: "12px solid #a855f7",
+              filter: "drop-shadow(0 0 4px rgba(168,85,247,0.9))",
             }}
           />
         </div>
@@ -198,10 +212,13 @@ function TriangleIndicator({ digit }: { digit: number | null }) {
           ))}
         </div>
       </div>
-      {/* digit labels under track */}
       <div className="flex mt-1">
         {Array.from({ length: 10 }, (_, i) => (
-          <div key={i} className="flex-1 text-center text-[9px] font-mono font-bold" style={{ color: D_COLORS[i].border, opacity: digit === i ? 1 : 0.45 }}>
+          <div
+            key={i}
+            className="flex-1 text-center font-mono font-bold"
+            style={{ fontSize: 9, color: D_COLORS[i].border, opacity: digit === i ? 1 : 0.4 }}
+          >
             {i}
           </div>
         ))}
@@ -210,7 +227,7 @@ function TriangleIndicator({ digit }: { digit: number | null }) {
   );
 }
 
-/* ─── Main page ─────────────────────────────────────────────────────────── */
+/* ── Main page ──────────────────────────────────────────────────────────── */
 export default function WideEye() {
   const [selectedMarket,     setSelectedMarket]     = useState("R_10");
   const [tickWindow,         setTickWindow]         = useState(1000);
@@ -224,16 +241,6 @@ export default function WideEye() {
     [digits, tickWindow]
   );
 
-  const freqs = useMemo(() => {
-    const f = new Array(10).fill(0);
-    displayDigits.forEach((d) => f[d]++);
-    const n = displayDigits.length || 1;
-    return f.map((c) => ({ count: c, pct: (c / n) * 100 }));
-  }, [displayDigits]);
-
-  const maxFreqDigit = freqs.reduce((mx, f, i) => (f.pct > freqs[mx].pct ? i : mx), 0);
-  const minFreqDigit = freqs.reduce((mn, f, i) => (f.pct < freqs[mn].pct ? i : mn), 0);
-
   const total      = displayDigits.length || 1;
   const evenCount  = displayDigits.filter((d) => d % 2 === 0).length;
   const oddCount   = total - evenCount;
@@ -242,22 +249,31 @@ export default function WideEye() {
   const equalCount = displayDigits.filter((d) => d === overUnderThreshold).length;
 
   const allMarkets = Object.entries(MARKETS_BY_CATEGORY);
-
-  /* price display: format using current pip size if we know it */
-  const priceStr = currentPrice !== null
+  const priceStr   = currentPrice !== null
     ? currentPrice.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 5 })
+    : "—";
+
+  /* recent 100 bubbles */
+  const recent100 = displayDigits.slice(-100);
+
+  const lastDigitIsEven = lastDigit !== null && lastDigit % 2 === 0;
+  const lastDigitClass  = lastDigit !== null
+    ? (lastDigit < overUnderThreshold ? "UNDER" : lastDigit === overUnderThreshold ? "EQUAL" : "OVER")
     : "—";
 
   return (
     <div className="space-y-5">
+      {/* ── Green accent stripe ── */}
+      <div className="h-0.5 rounded-full -mb-3" style={{ background: `linear-gradient(to right, ${ACCENT}, transparent)` }} />
+
       {/* ── Header ── */}
       <div className="flex items-center justify-between flex-wrap gap-3">
         <div>
-          <h1 className="text-2xl font-bold tracking-tight flex items-center gap-2">
-            <Eye className="w-6 h-6 text-primary" /> Wide Eye View
+          <h1 className="text-2xl font-bold tracking-tight flex items-center gap-2" style={{ color: ACCENT }}>
+            <Eye className="w-6 h-6" /> Wide Eye View
           </h1>
           <p className="text-muted-foreground text-sm">
-            Real-time digit distribution — last {displayDigits.length} ticks
+            Real-time digit distribution · {displayDigits.length} ticks loaded
           </p>
         </div>
         <Badge
@@ -269,128 +285,134 @@ export default function WideEye() {
         </Badge>
       </div>
 
-      {/* ── Market selector + price display (matches screenshot layout) ── */}
-      <Card className="bg-card border-border">
+      {/* ── Market selector — dark green theme ── */}
+      <Card
+        className="border"
+        style={{
+          background: "linear-gradient(135deg, rgba(5,46,22,0.95) 0%, rgba(3,30,15,0.98) 100%)",
+          borderColor: "#166534",
+          boxShadow: `0 0 24px rgba(22,163,74,0.15)`,
+        }}
+      >
         <CardContent className="p-4 space-y-4">
-          {/* row 1: Select Market label + dropdown */}
           <div>
-            <label className="text-sm font-semibold text-muted-foreground mb-1.5 block">
+            <label className="text-sm font-semibold mb-1.5 block" style={{ color: "#4ade80" }}>
               Select Market:
             </label>
             <select
               value={selectedMarket}
               onChange={(e) => setSelectedMarket(e.target.value)}
-              className="w-full bg-background border border-border text-foreground rounded-md px-3 py-2 text-sm font-mono focus:outline-none focus:border-primary"
+              className="w-full rounded-md px-3 py-2.5 text-sm font-mono focus:outline-none focus:ring-2"
+              style={{
+                background: "rgba(0,0,0,0.5)",
+                border: "1px solid #166534",
+                color: "#86efac",
+                focusRingColor: "#16a34a",
+              }}
             >
               {allMarkets.map(([cat, mkts]) => (
                 <optgroup key={cat} label={CATEGORY_LABELS[cat as MarketCategory]}>
                   {mkts.map((m) => (
-                    <option key={m.symbol} value={m.symbol}>{m.name}</option>
+                    <option key={m.symbol} value={m.symbol} style={{ backgroundColor: "#052e16" }}>
+                      {m.name}
+                    </option>
                   ))}
                 </optgroup>
               ))}
             </select>
           </div>
 
-          {/* row 2: price (large left) + current digit (large right) — exactly like screenshot */}
+          {/* Price + live digit row */}
           <div
-            className="flex items-center justify-between rounded-lg px-5 py-3 border border-border/60"
-            style={{ background: "rgba(0,209,209,0.03)" }}
+            className="flex items-center justify-between rounded-lg px-5 py-3 border"
+            style={{ background: "rgba(0,0,0,0.4)", borderColor: "#14532d" }}
           >
-            <span
-              className="font-mono font-bold tracking-tight"
-              style={{ fontSize: 28, color: "hsl(var(--foreground))" }}
-            >
+            <span className="font-mono font-bold tracking-tight text-white" style={{ fontSize: 28 }}>
               {priceStr}
             </span>
-
             {lastDigit !== null ? (
               <div
-                className="rounded-full flex items-center justify-center font-black border-2 transition-all duration-300"
+                className="rounded-full flex items-center justify-center font-black border-2"
                 style={{
-                  width: 56, height: 56,
-                  fontSize: 26,
-                  backgroundColor: "#00d1d1",
-                  borderColor: "#00d1d1",
-                  color: "#000",
-                  boxShadow: "0 0 24px rgba(0,209,209,0.6)",
+                  width: 56, height: 56, fontSize: 26,
+                  backgroundColor: "#00d1d1", borderColor: "#00d1d1",
+                  color: "#000", boxShadow: "0 0 24px rgba(0,209,209,0.6)",
                 }}
               >
                 {lastDigit}
               </div>
             ) : (
-              <div className="w-14 h-14 rounded-full border border-border/40 bg-muted/30 animate-pulse" />
+              <div className="w-14 h-14 rounded-full border animate-pulse" style={{ borderColor: "#166534" }} />
             )}
           </div>
 
-          {/* row 3: tick window controls */}
+          {/* Tick window */}
           <div className="flex flex-wrap gap-3 items-center">
             <div className="flex items-center gap-2">
-              <label className="text-xs text-muted-foreground font-semibold whitespace-nowrap">
+              <label className="text-xs font-semibold whitespace-nowrap" style={{ color: "#86efac" }}>
                 Ticks window:
               </label>
               <input
                 type="number"
-                min={50}
-                max={5000}
+                min={50} max={5000}
                 value={tickWindow}
                 onChange={(e) => setTickWindow(Math.max(50, Math.min(5000, +e.target.value)))}
-                className="w-24 bg-background border border-border text-foreground rounded px-2 py-1 text-sm font-mono focus:outline-none focus:border-primary"
+                className="w-24 rounded px-2 py-1 text-sm font-mono focus:outline-none"
+                style={{ background: "rgba(0,0,0,0.5)", border: "1px solid #166534", color: "#86efac" }}
               />
-              <span className="text-xs text-muted-foreground">(50–5000)</span>
+              <span className="text-xs" style={{ color: "#4ade8088" }}>(50–5000)</span>
             </div>
             <div className="flex gap-1.5 flex-wrap">
               {[100, 500, 1000, 2000].map((n) => (
                 <button
                   key={n}
                   onClick={() => setTickWindow(n)}
-                  className={`px-3 py-1 rounded text-xs font-bold border transition-colors ${
-                    tickWindow === n
-                      ? "bg-primary text-primary-foreground border-primary"
-                      : "bg-muted text-muted-foreground border-border hover:border-primary/50 hover:text-foreground"
-                  }`}
+                  className="px-3 py-1 rounded text-xs font-bold border transition-all"
+                  style={tickWindow === n
+                    ? { backgroundColor: "#16a34a", borderColor: "#16a34a", color: "#fff" }
+                    : { backgroundColor: "rgba(22,163,74,0.12)", borderColor: "#166534", color: "#4ade80" }
+                  }
                 >
                   {n}
                 </button>
               ))}
             </div>
-            <div className="ml-auto text-xs font-mono text-muted-foreground">
+            <div className="ml-auto text-xs font-mono">
               {!historyLoaded
                 ? <span className="text-yellow-400 animate-pulse">loading history…</span>
-                : <span className="text-green-400">{displayDigits.length}/{tickWindow}</span>}
+                : <span style={{ color: "#4ade80" }}>{displayDigits.length}/{tickWindow}</span>}
             </div>
           </div>
         </CardContent>
       </Card>
 
-      {/* ── Digit Circles (main feature matching the screenshot) ── */}
+      {/* ── Digit Circles ── */}
       <Card className="bg-card border-border">
-        <CardHeader className="py-3 px-5 border-b border-border">
+        <CardHeader className="py-3 px-5 border-b border-border flex flex-row items-center justify-between">
           <CardTitle className="text-xs font-bold uppercase text-muted-foreground">
-            Last {displayDigits.length} ticks digit distribution
+            Last {displayDigits.length} ticks — digit distribution
           </CardTitle>
+          <span className="text-[10px] text-muted-foreground font-mono">
+            ▼ purple = current digit
+          </span>
         </CardHeader>
         <CardContent className="px-5 pt-5 pb-4">
           {displayDigits.length < 10 ? (
             <div className="flex flex-col items-center py-10 gap-3 text-muted-foreground">
-              <Activity className="w-8 h-8 opacity-20 animate-spin" style={{ animationDuration: "3s" }} />
+              <Activity className="w-8 h-8 opacity-20" style={{ animation: "spin 3s linear infinite" }} />
               <p className="text-sm">Loading ticks…</p>
             </div>
           ) : (
-            <DigitCircles
-              digits={displayDigits}
-              lastDigit={lastDigit}
-              window={tickWindow}
-            />
+            <DigitCircles digits={displayDigits} lastDigit={lastDigit} />
           )}
         </CardContent>
       </Card>
 
-      {/* ── Triangle sliding indicator ── */}
+      {/* ── Triangle Indicator ── */}
       <Card className="bg-card border-border">
         <CardHeader className="pb-1 px-5 pt-4">
           <CardTitle className="text-xs font-bold uppercase text-muted-foreground">
-            Live Digit Indicator
+            Live Digit Position — purple triangle cursor
           </CardTitle>
         </CardHeader>
         <CardContent className="px-8 pb-5">
@@ -398,88 +420,91 @@ export default function WideEye() {
         </CardContent>
       </Card>
 
-      {/* ── Rolling tick stream ── */}
-      <Card className="bg-card border-border">
-        <CardHeader className="py-3 px-5 border-b border-border flex flex-row items-center justify-between">
-          <CardTitle className="text-xs font-bold uppercase text-muted-foreground">
-            Rolling Tick Stream
-          </CardTitle>
-          <span className="text-[10px] font-mono text-muted-foreground">
-            last {Math.min(displayDigits.length, 200)} of {displayDigits.length} ticks
-          </span>
-        </CardHeader>
-        <CardContent className="p-4">
-          <div className="flex flex-wrap gap-1">
-            {displayDigits.slice(-200).map((d, i, arr) => {
-              const isLatest = i === arr.length - 1;
-              return (
-                <div key={i} className="relative">
-                  <div
-                    className={`w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-black border transition-all ${
-                      isLatest ? "ring-2 ring-primary ring-offset-1 ring-offset-background" : ""
-                    }`}
-                    style={{
-                      backgroundColor: D_COLORS[d].bg,
-                      borderColor:     D_COLORS[d].border,
-                      color:           D_COLORS[d].text,
-                    }}
-                  >
-                    {d}
-                  </div>
-                  {isLatest && (
-                    <div
-                      className="absolute -top-1.5 left-1/2 -translate-x-1/2 w-0 h-0"
-                      style={{
-                        borderLeft:   "5px solid transparent",
-                        borderRight:  "5px solid transparent",
-                        borderTop:    `8px solid ${D_COLORS[d].border}`,
-                      }}
-                    />
-                  )}
-                </div>
-              );
-            })}
-          </div>
-          <p className="mt-2 text-[10px] text-muted-foreground">▼ = latest · colour = digit 0(indigo)→9(purple)</p>
-        </CardContent>
-      </Card>
-
-      {/* ── Even / Odd ── */}
+      {/* ── Even / Odd — with live digit in centre ── */}
       <Card className="bg-card border-border">
         <CardHeader className="py-3 px-5 border-b border-border">
-          <CardTitle className="text-xs font-bold uppercase text-muted-foreground">Even / Odd</CardTitle>
+          <CardTitle className="text-xs font-bold uppercase text-muted-foreground">
+            Even / Odd · {displayDigits.length} ticks
+          </CardTitle>
         </CardHeader>
-        <CardContent className="p-5 grid grid-cols-2 gap-5">
-          {[
-            { label: "Even", count: evenCount, pct: (evenCount / total) * 100, color: "#22c55e" },
-            { label: "Odd",  count: oddCount,  pct: (oddCount  / total) * 100, color: "#ef4444" },
-          ].map(({ label, count, pct, color }) => (
-            <div key={label}>
-              <div className="flex justify-between items-baseline mb-2">
-                <span className="font-bold text-lg">{label}</span>
-                <span className="font-mono text-xl font-black">
-                  {count} <span className="text-sm text-muted-foreground">({pct.toFixed(1)}%)</span>
-                </span>
-              </div>
-              <div className="h-2 bg-muted rounded-full overflow-hidden">
-                <div className="h-full rounded-full transition-all" style={{ width: `${pct}%`, backgroundColor: color }} />
+        <CardContent className="p-5">
+          {/* Three-col: Even | LIVE digit | Odd */}
+          <div className="grid grid-cols-3 gap-4 items-center mb-5">
+            {/* Even */}
+            <div>
+              <div className="text-green-400 font-bold text-base mb-1">Even</div>
+              <div className="font-mono text-3xl font-black">{evenCount}</div>
+              <div className="text-muted-foreground text-sm">{((evenCount / total) * 100).toFixed(1)}%</div>
+              <div className="h-2 bg-muted rounded-full mt-2 overflow-hidden">
+                <div
+                  className="h-full rounded-full transition-all"
+                  style={{ width: `${(evenCount / total) * 100}%`, backgroundColor: "#22c55e" }}
+                />
               </div>
             </div>
-          ))}
-          <div className="col-span-2 mt-1">
-            <div className="text-xs font-bold text-muted-foreground mb-2">Recent 20</div>
-            <div className="flex flex-wrap gap-1">
-              {displayDigits.slice(-20).map((d, i) => (
+
+            {/* Middle live digit */}
+            <div className="flex flex-col items-center gap-1">
+              <span className="text-[10px] text-muted-foreground uppercase font-bold">Live digit</span>
+              {lastDigit !== null ? (
                 <div
-                  key={i}
-                  className="w-7 h-7 rounded-full flex items-center justify-center text-[10px] font-black border"
+                  className="rounded-full flex items-center justify-center font-black border-2"
                   style={{
-                    backgroundColor: d % 2 === 0 ? "#16a34a" : "#dc2626",
-                    borderColor:     d % 2 === 0 ? "#22c55e" : "#ef4444",
+                    width: 60, height: 60, fontSize: 28,
+                    backgroundColor: lastDigitIsEven ? "#15803d" : "#991b1b",
+                    borderColor:     lastDigitIsEven ? "#22c55e" : "#ef4444",
                     color: "#fff",
+                    boxShadow: lastDigitIsEven
+                      ? "0 0 18px rgba(34,197,94,0.5)"
+                      : "0 0 18px rgba(239,68,68,0.5)",
                   }}
                 >
-                  {d % 2 === 0 ? "E" : "O"}
+                  {lastDigit}
+                </div>
+              ) : (
+                <div className="w-14 h-14 rounded-full border border-border/40 bg-muted/30 animate-pulse" />
+              )}
+              <span
+                className="text-xs font-black"
+                style={{ color: lastDigitIsEven ? "#4ade80" : "#f87171" }}
+              >
+                {lastDigit !== null ? (lastDigitIsEven ? "EVEN" : "ODD") : "—"}
+              </span>
+            </div>
+
+            {/* Odd */}
+            <div className="text-right">
+              <div className="text-red-400 font-bold text-base mb-1">Odd</div>
+              <div className="font-mono text-3xl font-black">{oddCount}</div>
+              <div className="text-muted-foreground text-sm">{((oddCount / total) * 100).toFixed(1)}%</div>
+              <div className="h-2 bg-muted rounded-full mt-2 overflow-hidden">
+                <div
+                  className="h-full rounded-full transition-all ml-auto"
+                  style={{ width: `${(oddCount / total) * 100}%`, backgroundColor: "#ef4444" }}
+                />
+              </div>
+            </div>
+          </div>
+
+          {/* Recent 100 bubbles showing actual digit values */}
+          <div>
+            <div className="text-xs font-bold text-muted-foreground mb-2">
+              Recent {Math.min(recent100.length, 100)} ticks · E=even O=odd
+            </div>
+            <div className="flex flex-wrap gap-1">
+              {recent100.map((d, i) => (
+                <div
+                  key={i}
+                  className="w-6 h-6 rounded-full flex items-center justify-center text-[9px] font-black"
+                  style={{
+                    backgroundColor: d % 2 === 0 ? "#15803d" : "#991b1b",
+                    borderColor:     d % 2 === 0 ? "#22c55e" : "#ef4444",
+                    color: "#fff",
+                    border: "1px solid",
+                  }}
+                  title={`Digit ${d}`}
+                >
+                  {d}
                 </div>
               ))}
             </div>
@@ -487,10 +512,12 @@ export default function WideEye() {
         </CardContent>
       </Card>
 
-      {/* ── Over / Under ── */}
+      {/* ── Over / Under — with live digit in centre ── */}
       <Card className="bg-card border-border">
         <CardHeader className="py-3 px-5 border-b border-border flex flex-row items-center justify-between">
-          <CardTitle className="text-xs font-bold uppercase text-muted-foreground">Over / Under</CardTitle>
+          <CardTitle className="text-xs font-bold uppercase text-muted-foreground">
+            Over / Under · {displayDigits.length} ticks
+          </CardTitle>
           <div className="flex items-center gap-2">
             <span className="text-xs text-muted-foreground">Threshold:</span>
             <select
@@ -504,40 +531,149 @@ export default function WideEye() {
             </select>
           </div>
         </CardHeader>
-        <CardContent className="p-5 grid grid-cols-3 gap-4">
-          {[
-            { label: "Under", count: underCount, pct: (underCount / total) * 100, color: "#3b82f6" },
-            { label: "Equal", count: equalCount, pct: (equalCount / total) * 100, color: "#6b7280" },
-            { label: "Over",  count: overCount,  pct: (overCount  / total) * 100, color: "#ef4444" },
-          ].map(({ label, count, pct, color }) => (
-            <div key={label} className="text-center">
-              <div className="font-bold text-sm mb-1">{label}</div>
-              <div className="font-mono text-xl font-black">
-                {count} <span className="text-xs text-muted-foreground">({pct.toFixed(1)}%)</span>
-              </div>
-              <div className="h-1.5 bg-muted rounded-full overflow-hidden mt-2">
-                <div className="h-full rounded-full transition-all" style={{ width: `${pct}%`, backgroundColor: color }} />
+        <CardContent className="p-5">
+          {/* Three-col: Under | LIVE digit | Over */}
+          <div className="grid grid-cols-3 gap-4 items-center mb-4">
+            {/* Under */}
+            <div>
+              <div className="text-blue-400 font-bold text-base mb-1">Under {overUnderThreshold}</div>
+              <div className="font-mono text-3xl font-black">{underCount}</div>
+              <div className="text-muted-foreground text-sm">{((underCount / total) * 100).toFixed(1)}%</div>
+              <div className="h-2 bg-muted rounded-full mt-2 overflow-hidden">
+                <div
+                  className="h-full rounded-full transition-all"
+                  style={{ width: `${(underCount / total) * 100}%`, backgroundColor: "#3b82f6" }}
+                />
               </div>
             </div>
-          ))}
-          <div className="col-span-3 mt-2">
-            <div className="text-xs font-bold text-muted-foreground mb-2">Recent 20</div>
+
+            {/* Middle live digit */}
+            <div className="flex flex-col items-center gap-1">
+              <span className="text-[10px] text-muted-foreground uppercase font-bold">Live digit</span>
+              {lastDigit !== null ? (
+                <div
+                  className="rounded-full flex items-center justify-center font-black border-2"
+                  style={{
+                    width: 60, height: 60, fontSize: 28,
+                    backgroundColor:
+                      lastDigitClass === "UNDER" ? "#1e3a8a"
+                      : lastDigitClass === "OVER"  ? "#991b1b"
+                      : "#374151",
+                    borderColor:
+                      lastDigitClass === "UNDER" ? "#3b82f6"
+                      : lastDigitClass === "OVER"  ? "#ef4444"
+                      : "#6b7280",
+                    color: "#fff",
+                    boxShadow:
+                      lastDigitClass === "UNDER" ? "0 0 18px rgba(59,130,246,0.5)"
+                      : lastDigitClass === "OVER"  ? "0 0 18px rgba(239,68,68,0.5)"
+                      : "none",
+                  }}
+                >
+                  {lastDigit}
+                </div>
+              ) : (
+                <div className="w-14 h-14 rounded-full border border-border/40 bg-muted/30 animate-pulse" />
+              )}
+              <span
+                className="text-xs font-black"
+                style={{
+                  color: lastDigitClass === "UNDER" ? "#60a5fa"
+                    : lastDigitClass === "OVER"  ? "#f87171"
+                    : "#9ca3af",
+                }}
+              >
+                {lastDigitClass}
+              </span>
+            </div>
+
+            {/* Over */}
+            <div className="text-right">
+              <div className="text-red-400 font-bold text-base mb-1">Over {overUnderThreshold}</div>
+              <div className="font-mono text-3xl font-black">{overCount}</div>
+              <div className="text-muted-foreground text-sm">{((overCount / total) * 100).toFixed(1)}%</div>
+              <div className="h-2 bg-muted rounded-full mt-2 overflow-hidden">
+                <div
+                  className="h-full rounded-full transition-all ml-auto"
+                  style={{ width: `${(overCount / total) * 100}%`, backgroundColor: "#ef4444" }}
+                />
+              </div>
+            </div>
+          </div>
+
+          {/* Equal row */}
+          <div className="flex items-center gap-3 py-2 px-3 rounded-lg mb-4"
+            style={{ background: "rgba(107,114,128,0.1)", border: "1px solid rgba(107,114,128,0.2)" }}>
+            <span className="text-xs text-muted-foreground">Equal to {overUnderThreshold}:</span>
+            <span className="font-mono font-bold">{equalCount}</span>
+            <span className="text-muted-foreground text-xs">({((equalCount / total) * 100).toFixed(1)}%)</span>
+          </div>
+
+          {/* Recent 100 showing actual digit values */}
+          <div>
+            <div className="text-xs font-bold text-muted-foreground mb-2">
+              Recent {Math.min(recent100.length, 100)} ticks · U=under ={overUnderThreshold} O=over
+            </div>
             <div className="flex flex-wrap gap-1">
-              {displayDigits.slice(-20).map((d, i) => {
-                const lbl = d < overUnderThreshold ? "U" : d === overUnderThreshold ? "=" : "O";
-                const clr = d < overUnderThreshold ? "#2563eb" : d === overUnderThreshold ? "#4b5563" : "#dc2626";
+              {recent100.map((d, i) => {
+                const isUnder = d < overUnderThreshold;
+                const isOver  = d > overUnderThreshold;
                 return (
                   <div
                     key={i}
-                    className="w-7 h-7 rounded-full flex items-center justify-center text-[10px] font-black border"
-                    style={{ backgroundColor: clr, borderColor: clr, color: "#fff" }}
+                    className="w-6 h-6 rounded-full flex items-center justify-center text-[9px] font-black border"
+                    style={{
+                      backgroundColor: isUnder ? "#1e3a8a" : isOver ? "#991b1b" : "#374151",
+                      borderColor:     isUnder ? "#3b82f6" : isOver ? "#ef4444" : "#6b7280",
+                      color: "#fff",
+                    }}
+                    title={`Digit ${d}`}
                   >
-                    {lbl}
+                    {d}
                   </div>
                 );
               })}
             </div>
           </div>
+        </CardContent>
+      </Card>
+
+      {/* ── Rolling tick stream ── */}
+      <Card className="bg-card border-border">
+        <CardHeader className="py-3 px-5 border-b border-border flex flex-row items-center justify-between">
+          <CardTitle className="text-xs font-bold uppercase text-muted-foreground">Rolling Tick Stream</CardTitle>
+          <span className="text-[10px] font-mono text-muted-foreground">
+            last {Math.min(displayDigits.length, 200)} of {displayDigits.length}
+          </span>
+        </CardHeader>
+        <CardContent className="p-4">
+          <div className="flex flex-wrap gap-1">
+            {displayDigits.slice(-200).map((d, i, arr) => {
+              const isLatest = i === arr.length - 1;
+              return (
+                <div key={i} className="relative">
+                  <div
+                    className={`w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-black border transition-all ${isLatest ? "ring-2 ring-purple-500 ring-offset-1 ring-offset-background" : ""}`}
+                    style={{ backgroundColor: D_COLORS[d].bg, borderColor: D_COLORS[d].border, color: D_COLORS[d].text }}
+                  >
+                    {d}
+                  </div>
+                  {isLatest && (
+                    <div
+                      className="absolute -top-2 left-1/2 -translate-x-1/2"
+                      style={{
+                        width: 0, height: 0,
+                        borderLeft: "5px solid transparent",
+                        borderRight: "5px solid transparent",
+                        borderTop: "8px solid #a855f7",
+                      }}
+                    />
+                  )}
+                </div>
+              );
+            })}
+          </div>
+          <p className="mt-2 text-[10px] text-muted-foreground">▼ = latest tick (purple) · digit 0(indigo)→9(purple)</p>
         </CardContent>
       </Card>
     </div>

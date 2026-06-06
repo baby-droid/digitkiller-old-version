@@ -24,8 +24,9 @@ export default function Dashboard() {
 
   return (
     <div className="space-y-6">
+      <div className="h-0.5 rounded-full -mb-3" style={{ background: "linear-gradient(to right,#6366f1,transparent)" }} />
       <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-bold tracking-tight">Market Dashboard</h1>
+        <h1 className="text-2xl font-bold tracking-tight" style={{ color: "#6366f1" }}>Market Dashboard</h1>
         <Button 
           onClick={() => setLocation("/scanner")} 
           variant="default"

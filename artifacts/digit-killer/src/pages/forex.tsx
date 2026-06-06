@@ -142,12 +142,13 @@ export default function Forex() {
 
   return (
     <div className="space-y-4">
+      <div className="h-0.5 rounded-full -mb-1" style={{ background: "linear-gradient(to right,#f59e0b,transparent)" }} />
       {/* Header */}
       <div className="flex items-center justify-between flex-wrap gap-3">
         <div className="flex items-center gap-3">
           <div className="flex items-center gap-2">
             <DollarSign className="w-6 h-6 text-yellow-400" />
-            <h1 className="text-2xl font-bold tracking-tight">Gold / USD</h1>
+            <h1 className="text-2xl font-bold tracking-tight" style={{ color: "#f59e0b" }}>Gold / USD</h1>
           </div>
           <Badge variant="outline" className="font-mono text-xs gap-1 border-yellow-400/30 text-yellow-400">
             <div className={`w-1.5 h-1.5 rounded-full ${isConnected ? "bg-yellow-400 animate-pulse" : "bg-red-500"}`} />

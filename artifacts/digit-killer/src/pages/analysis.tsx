@@ -61,10 +61,11 @@ export default function Analysis() {
 
   return (
     <div className="space-y-5">
+      <div className="h-0.5 rounded-full -mb-2" style={{ background: "linear-gradient(to right,#06b6d4,transparent)" }} />
       <div className="flex items-start justify-between flex-wrap gap-3">
         <div>
-          <h1 className="text-2xl font-bold tracking-tight flex items-center gap-2">
-            <Activity className="w-6 h-6 text-primary" /> Digit Analysis
+          <h1 className="text-2xl font-bold tracking-tight flex items-center gap-2" style={{ color: "#06b6d4" }}>
+            <Activity className="w-6 h-6" style={{ color: "#06b6d4" }} /> Digit Analysis
           </h1>
           <p className="text-muted-foreground text-sm">
             {last1000.length >= 1000 ? "1000" : last1000.length} ticks analysed · {mkt?.name ?? activeMarket}

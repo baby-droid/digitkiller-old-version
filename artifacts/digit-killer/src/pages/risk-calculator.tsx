@@ -122,6 +122,7 @@ export default function RiskCalculator() {
 
   return (
     <div className="space-y-5 max-w-4xl">
+      <div className="h-0.5 rounded-full -mb-2" style={{ background: "linear-gradient(to right,#ef4444,transparent)" }} />
       <div>
         <h1 className="text-2xl font-bold tracking-tight flex items-center gap-2">
           <Calculator className="w-6 h-6 text-primary" /> Risk Calculator

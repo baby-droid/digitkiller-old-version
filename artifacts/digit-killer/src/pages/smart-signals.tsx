@@ -391,11 +391,12 @@ export default function SmartSignals() {
 
   return (
     <div className="space-y-5">
+      <div className="h-0.5 rounded-full -mb-2" style={{ background: "linear-gradient(to right,#ec4899,transparent)" }} />
       {/* Header */}
       <div className="flex items-center justify-between flex-wrap gap-3">
         <div>
-          <h1 className="text-2xl font-bold tracking-tight flex items-center gap-2">
-            <Sparkles className="w-6 h-6 text-primary" /> Smart Signals
+          <h1 className="text-2xl font-bold tracking-tight flex items-center gap-2" style={{ color: "#ec4899" }}>
+            <Sparkles className="w-6 h-6" style={{ color: "#ec4899" }} /> Smart Signals
           </h1>
           <p className="text-muted-foreground text-sm mt-0.5">
             AI signals valid 20 min · Download branded PNG flyers
