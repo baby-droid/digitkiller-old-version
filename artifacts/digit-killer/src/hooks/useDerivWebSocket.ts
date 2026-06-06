@@ -23,9 +23,12 @@ export const MARKETS_BY_CATEGORY: Record<MarketCategory, Market[]> = {
     { name: "Vol 75",   symbol: "R_75",     category: "volatility", pipSize: 4 },
     { name: "Vol 100",  symbol: "R_100",    category: "volatility", pipSize: 2 },
     { name: "1s V10",   symbol: "1HZ10V",   category: "volatility", pipSize: 3 },
+    { name: "1s V15",   symbol: "1HZ15V",   category: "volatility", pipSize: 3 },
     { name: "1s V25",   symbol: "1HZ25V",   category: "volatility", pipSize: 3 },
+    { name: "1s V30",   symbol: "1HZ30V",   category: "volatility", pipSize: 3 },
     { name: "1s V50",   symbol: "1HZ50V",   category: "volatility", pipSize: 4 },
     { name: "1s V75",   symbol: "1HZ75V",   category: "volatility", pipSize: 4 },
+    { name: "1s V90",   symbol: "1HZ90V",   category: "volatility", pipSize: 4 },
     { name: "1s V100",  symbol: "1HZ100V",  category: "volatility", pipSize: 2 },
   ],
   crash_boom: [
