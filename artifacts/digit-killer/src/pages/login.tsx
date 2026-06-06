@@ -2,16 +2,17 @@ import { useState } from "react";
 import { useAuth } from "@/lib/auth-context";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
-import { Shield, User, Eye, EyeOff, Zap, AlertCircle } from "lucide-react";
+import { Shield, User, Eye, EyeOff, Zap, AlertCircle, Loader2 } from "lucide-react";
 
 export default function Login() {
   const { loginAdmin, loginUser } = useAuth();
-  const [tab, setTab] = useState<"admin" | "user">("admin");
-  const [pin, setPin] = useState("");
-  const [userId, setUserId] = useState("");
+  const [tab, setTab]         = useState<"admin" | "user">("admin");
+  const [pin, setPin]         = useState("");
+  const [userId, setUserId]   = useState("");
   const [showPin, setShowPin] = useState(false);
-  const [error, setError] = useState("");
+  const [error, setError]     = useState("");
   const [shaking, setShaking] = useState(false);
+  const [loading, setLoading] = useState(false);
 
   const shake = () => {
     setShaking(true);
@@ -28,13 +29,22 @@ export default function Login() {
     }
   };
 
-  const handleUserLogin = (e: React.FormEvent) => {
+  const handleUserLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     setError("");
-    if (!loginUser(userId)) {
-      setError("Invalid or revoked User ID.");
+    setLoading(true);
+    try {
+      const ok = await loginUser(userId);
+      if (!ok) {
+        setError("Invalid or revoked User ID.");
+        shake();
+        setUserId("");
+      }
+    } catch {
+      setError("Could not reach server. Check your connection.");
       shake();
-      setUserId("");
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -61,10 +71,8 @@ export default function Login() {
       <div
         className="absolute rounded-full pointer-events-none"
         style={{
-          width: 500,
-          height: 500,
-          top: "50%",
-          left: "50%",
+          width: 500, height: 500,
+          top: "50%", left: "50%",
           transform: "translate(-50%, -60%)",
           background: "radial-gradient(circle, rgba(0,209,209,0.05) 0%, transparent 70%)",
         }}
@@ -89,7 +97,9 @@ export default function Login() {
             >
               DIGIT KILLER
             </div>
-            <div className="text-xs tracking-[0.4em] text-primary/50 mt-1">AHMED SYNTRADER · AI SYSTEM</div>
+            <div className="text-xs tracking-[0.4em] text-primary/50 mt-1">
+              AHMED SYNTRADER · AI SYSTEM
+            </div>
           </div>
         </div>
 
@@ -162,6 +172,7 @@ export default function Login() {
                     onChange={(e) => setUserId(e.target.value.toUpperCase())}
                     className="font-mono tracking-widest bg-background border-border uppercase"
                     autoFocus
+                    disabled={loading}
                   />
                 </div>
                 {error && (
@@ -171,10 +182,13 @@ export default function Login() {
                 )}
                 <button
                   type="submit"
-                  className="w-full py-3 bg-primary text-primary-foreground font-black tracking-widest rounded-md hover:bg-primary/90 transition-all flex items-center justify-center gap-2"
+                  disabled={loading || !userId.trim()}
+                  className="w-full py-3 bg-primary text-primary-foreground font-black tracking-widest rounded-md hover:bg-primary/90 transition-all flex items-center justify-center gap-2 disabled:opacity-60 disabled:cursor-not-allowed"
                   style={{ boxShadow: "0 0 20px rgba(0,209,209,0.3)" }}
                 >
-                  <Zap className="w-4 h-4" /> ACCESS PLATFORM
+                  {loading
+                    ? <><Loader2 className="w-4 h-4 animate-spin" /> VERIFYING…</>
+                    : <><Zap className="w-4 h-4" /> ACCESS PLATFORM</>}
                 </button>
                 <p className="text-xs text-center text-muted-foreground">
                   Get your User ID from the admin.
@@ -192,10 +206,10 @@ export default function Login() {
       <style>{`
         @keyframes shake {
           0%, 100% { transform: translateX(0); }
-          20% { transform: translateX(-8px); }
-          40% { transform: translateX(8px); }
-          60% { transform: translateX(-6px); }
-          80% { transform: translateX(6px); }
+          20%  { transform: translateX(-8px); }
+          40%  { transform: translateX(8px); }
+          60%  { transform: translateX(-6px); }
+          80%  { transform: translateX(6px); }
         }
       `}</style>
     </div>

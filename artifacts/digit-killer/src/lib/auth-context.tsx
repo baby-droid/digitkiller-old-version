@@ -1,8 +1,8 @@
-import { createContext, useContext, useState, useEffect, ReactNode } from "react";
+import { createContext, useContext, useState, useEffect, useCallback, ReactNode } from "react";
 
-const ADMIN_PIN = "AHMED2005";
+const ADMIN_PIN   = "AHMED2005";
 const SESSION_KEY = "dk_session";
-const USERS_KEY = "dk_users";
+const API_BASE    = "/api";
 
 export type UserRecord = {
   id: string;
@@ -23,29 +23,18 @@ type AuthContextType = {
   isAuthenticated: boolean;
   isAdmin: boolean;
   loginAdmin: (pin: string) => boolean;
-  loginUser: (id: string) => boolean;
+  loginUser: (id: string) => Promise<boolean>;
   logout: () => void;
   users: UserRecord[];
-  generateUserId: (name: string) => string;
-  revokeUser: (id: string) => void;
-  restoreUser: (id: string) => void;
+  generateUserId: (name: string) => Promise<string>;
+  revokeUser: (id: string) => Promise<void>;
+  restoreUser: (id: string) => Promise<void>;
+  refreshUsers: () => Promise<void>;
 };
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
-function loadUsers(): UserRecord[] {
-  try {
-    return JSON.parse(localStorage.getItem(USERS_KEY) || "[]");
-  } catch {
-    return [];
-  }
-}
-
-function saveUsers(users: UserRecord[]) {
-  localStorage.setItem(USERS_KEY, JSON.stringify(users));
-}
-
-function generateId(): string {
+function generateLocalId(): string {
   const chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
   let id = "DK-";
   for (let i = 0; i < 6; i++) id += chars[Math.floor(Math.random() * chars.length)];
@@ -60,66 +49,93 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       return null;
     }
   });
-  const [users, setUsers] = useState<UserRecord[]>(loadUsers);
+  const [users, setUsers] = useState<UserRecord[]>([]);
 
   useEffect(() => {
     if (session) sessionStorage.setItem(SESSION_KEY, JSON.stringify(session));
     else sessionStorage.removeItem(SESSION_KEY);
   }, [session]);
 
+  /* ── Fetch user list from server (admin only) ── */
+  const refreshUsers = useCallback(async () => {
+    try {
+      const res = await fetch(`${API_BASE}/users`, {
+        headers: { "x-admin-pin": ADMIN_PIN },
+      });
+      if (res.ok) setUsers(await res.json());
+    } catch {
+      /* server offline during dev — ignore */
+    }
+  }, []);
+
+  useEffect(() => {
+    if (session?.type === "admin") refreshUsers();
+  }, [session, refreshUsers]);
+
+  /* ── Admin PIN login (local, instant) ── */
   const loginAdmin = (pin: string): boolean => {
     if (pin === ADMIN_PIN) {
-      const s: Session = { type: "admin", userId: "ADMIN", userName: "Admin" };
-      setSession(s);
+      setSession({ type: "admin", userId: "ADMIN", userName: "Admin" });
       return true;
     }
     return false;
   };
 
-  const loginUser = (id: string): boolean => {
-    const normalizedId = id.trim().toUpperCase();
-    const user = users.find((u) => u.id === normalizedId && u.active);
-    if (user) {
-      const updated = users.map((u) =>
-        u.id === normalizedId ? { ...u, lastLogin: new Date().toISOString() } : u
-      );
-      saveUsers(updated);
-      setUsers(updated);
-      const s: Session = { type: "user", userId: user.id, userName: user.name };
-      setSession(s);
-      return true;
+  /* ── User login — validated against server ── */
+  const loginUser = async (id: string): Promise<boolean> => {
+    try {
+      const res = await fetch(`${API_BASE}/users/login`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id: id.trim().toUpperCase() }),
+      });
+      if (res.ok) {
+        const user = await res.json() as { id: string; name: string };
+        setSession({ type: "user", userId: user.id, userName: user.name });
+        return true;
+      }
+    } catch {
+      /* network error */
     }
     return false;
   };
 
   const logout = () => setSession(null);
 
-  const generateUserId = (name: string): string => {
-    let id = generateId();
-    while (users.find((u) => u.id === id)) id = generateId();
-    const newUser: UserRecord = {
-      id,
-      name,
-      created: new Date().toISOString(),
-      active: true,
-      lastLogin: null,
-    };
-    const updated = [...users, newUser];
-    saveUsers(updated);
-    setUsers(updated);
+  /* ── Generate + persist user to server ── */
+  const generateUserId = async (name: string): Promise<string> => {
+    let id = generateLocalId();
+    while (users.find((u) => u.id === id)) id = generateLocalId();
+
+    const res = await fetch(`${API_BASE}/users`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "x-admin-pin": ADMIN_PIN,
+      },
+      body: JSON.stringify({ id, name }),
+    });
+    if (!res.ok) throw new Error("Failed to create user on server");
+    const newUser: UserRecord = await res.json();
+    setUsers((prev) => [...prev, newUser]);
     return id;
   };
 
-  const revokeUser = (id: string) => {
-    const updated = users.map((u) => (u.id === id ? { ...u, active: false } : u));
-    saveUsers(updated);
-    setUsers(updated);
+  /* ── Revoke / restore — server-side ── */
+  const revokeUser = async (id: string): Promise<void> => {
+    await fetch(`${API_BASE}/users/${id}/revoke`, {
+      method: "PATCH",
+      headers: { "x-admin-pin": ADMIN_PIN },
+    });
+    setUsers((prev) => prev.map((u) => u.id === id ? { ...u, active: false } : u));
   };
 
-  const restoreUser = (id: string) => {
-    const updated = users.map((u) => (u.id === id ? { ...u, active: true } : u));
-    saveUsers(updated);
-    setUsers(updated);
+  const restoreUser = async (id: string): Promise<void> => {
+    await fetch(`${API_BASE}/users/${id}/restore`, {
+      method: "PATCH",
+      headers: { "x-admin-pin": ADMIN_PIN },
+    });
+    setUsers((prev) => prev.map((u) => u.id === id ? { ...u, active: true } : u));
   };
 
   return (
@@ -135,6 +151,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         generateUserId,
         revokeUser,
         restoreUser,
+        refreshUsers,
       }}
     >
       {children}

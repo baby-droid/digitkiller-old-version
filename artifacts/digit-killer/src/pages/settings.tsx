@@ -5,7 +5,7 @@ import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import {
   Shield, User, Plus, Trash2, RotateCcw, CheckCircle2, AlertCircle,
-  Settings2, Wifi, RefreshCw, Info, Database, Zap, LogOut, Copy, Power
+  Settings2, Wifi, RefreshCw, Info, Database, Zap, LogOut, Copy, Power, Loader2
 } from "lucide-react";
 
 function copyToClipboard(text: string) {
@@ -25,17 +25,27 @@ function SectionCard({ title, icon: Icon, children }: { title: string; icon: Rea
 }
 
 export default function Settings() {
-  const { session, isAdmin, logout, users, generateUserId, revokeUser, restoreUser } = useAuth();
+  const { session, isAdmin, logout, users, generateUserId, revokeUser, restoreUser, refreshUsers } = useAuth();
   const [newUserName, setNewUserName] = useState("");
   const [generatedId, setGeneratedId] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
   const [wsStatus, setWsStatus] = useState<"idle" | "checking" | "ok" | "fail">("idle");
+  const [generating, setGenerating] = useState(false);
+  const [generateError, setGenerateError] = useState("");
 
-  const handleGenerate = () => {
-    if (!newUserName.trim()) return;
-    const id = generateUserId(newUserName.trim());
-    setGeneratedId(id);
-    setNewUserName("");
+  const handleGenerate = async () => {
+    if (!newUserName.trim() || generating) return;
+    setGenerating(true);
+    setGenerateError("");
+    try {
+      const id = await generateUserId(newUserName.trim());
+      setGeneratedId(id);
+      setNewUserName("");
+    } catch {
+      setGenerateError("Failed to create user. Check server connection.");
+    } finally {
+      setGenerating(false);
+    }
   };
 
   const handleCopy = (text: string) => {
@@ -119,15 +129,23 @@ export default function Settings() {
                   onChange={(e) => setNewUserName(e.target.value)}
                   onKeyDown={(e) => e.key === "Enter" && handleGenerate()}
                   className="bg-background border-border"
+                  disabled={generating}
                 />
                 <button
                   onClick={handleGenerate}
-                  disabled={!newUserName.trim()}
+                  disabled={!newUserName.trim() || generating}
                   className="flex items-center gap-2 px-4 py-2 bg-primary text-primary-foreground rounded-md text-sm font-bold hover:bg-primary/90 disabled:opacity-40 transition-all whitespace-nowrap"
                 >
-                  <Plus className="w-4 h-4" /> Generate
+                  {generating
+                    ? <><Loader2 className="w-4 h-4 animate-spin" /> Saving…</>
+                    : <><Plus className="w-4 h-4" /> Generate</>}
                 </button>
               </div>
+              {generateError && (
+                <div className="mt-2 flex items-center gap-2 text-destructive text-xs">
+                  <AlertCircle className="w-3.5 h-3.5" /> {generateError}
+                </div>
+              )}
               {generatedId && (
                 <div className="mt-3 p-3 bg-primary/10 border border-primary/30 rounded-lg flex items-center justify-between">
                   <div>
@@ -166,7 +184,7 @@ export default function Settings() {
                         <button onClick={() => handleCopy(u.id)} className="p-1.5 text-muted-foreground hover:text-foreground transition-colors" title="Copy ID">
                           <Copy className="w-3.5 h-3.5" />
                         </button>
-                        <button onClick={() => revokeUser(u.id)} className="flex items-center gap-1.5 px-3 py-1.5 border border-destructive/30 text-destructive rounded text-xs font-bold hover:bg-destructive/10 transition-all">
+                        <button onClick={() => void revokeUser(u.id)} className="flex items-center gap-1.5 px-3 py-1.5 border border-destructive/30 text-destructive rounded text-xs font-bold hover:bg-destructive/10 transition-all">
                           <Trash2 className="w-3 h-3" /> Revoke
                         </button>
                       </div>
@@ -193,7 +211,7 @@ export default function Settings() {
                         </div>
                         <div className="font-mono text-xs text-muted-foreground">{u.id}</div>
                       </div>
-                      <button onClick={() => restoreUser(u.id)} className="flex items-center gap-1.5 px-3 py-1.5 border border-primary/30 text-primary rounded text-xs font-bold hover:bg-primary/10 transition-all">
+                      <button onClick={() => void restoreUser(u.id)} className="flex items-center gap-1.5 px-3 py-1.5 border border-primary/30 text-primary rounded text-xs font-bold hover:bg-primary/10 transition-all">
                         <RotateCcw className="w-3 h-3" /> Restore
                       </button>
                     </div>
