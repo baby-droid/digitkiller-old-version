@@ -2,7 +2,7 @@ import { useState, useMemo } from "react";
 import { useDerivWebSocket, MARKETS_BY_CATEGORY, CATEGORY_LABELS, MarketCategory } from "@/hooks/useDerivWebSocket";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Binary, Zap, Shield, AlertTriangle, CheckCircle2, Activity } from "lucide-react";
+import { Binary, Zap, Shield, AlertTriangle, CheckCircle2, Activity, TrendingUp } from "lucide-react";
 
 const ACCENT = "#7c3aed";
 
@@ -15,10 +15,34 @@ type Signal = {
   ticks?: number;
 };
 
+function getFrequencies(digits: number[], window = 100) {
+  const last = digits.slice(-window);
+  const counts = new Array(10).fill(0);
+  last.forEach((d) => counts[d]++);
+  const total = last.length || 1;
+  const pcts = counts.map((c) => (c / total) * 100);
+  const sorted = [...pcts.map((p, i) => ({ digit: i, pct: p }))].sort((a, b) => b.pct - a.pct);
+  return { counts, pcts, sorted, total: last.length };
+}
+
 function analyzeSignals(digits: number[]): Signal[] {
   if (digits.length < 20) return [];
   const signals: Signal[] = [];
   const last = digits.slice(-50);
+
+  // Most frequent digit → MATCHES signal
+  const { sorted, pcts } = getFrequencies(digits, 100);
+  const topDigit = sorted[0];
+  if (topDigit.pct >= 14) {
+    signals.push({
+      type: "MATCHES",
+      digit: topDigit.digit,
+      strategy: "Frequency Dominance",
+      confidence: topDigit.pct >= 18 ? "HIGH" : "MEDIUM",
+      reason: `Digit ${topDigit.digit} is most frequent at ${topDigit.pct.toFixed(1)}% in last 100 ticks — statistically favoured to appear again`,
+    });
+  }
+  void pcts;
 
   const ticksSince: number[] = Array.from({ length: 10 }, (_, d) => {
     const idx = [...last].reverse().findIndex((x) => x === d);
@@ -132,6 +156,7 @@ export default function MatchesDiffers() {
   const signals = useMemo(() => analyzeSignals(displayDigits), [displayDigits]);
   const matchSignals = signals.filter((s) => s.type === "MATCHES");
   const differSignals = signals.filter((s) => s.type === "DIFFERS");
+  const freq = useMemo(() => getFrequencies(displayDigits, 100), [displayDigits]);
 
   const priceStr = currentPrice !== null
     ? currentPrice.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 5 })
@@ -189,6 +214,80 @@ export default function MatchesDiffers() {
           </div>
         </CardContent>
       </Card>
+
+      {/* Most Frequent Digit banner */}
+      {historyLoaded && freq.total > 0 && (
+        <Card className="border overflow-hidden" style={{ background: "linear-gradient(135deg,rgba(124,58,237,0.18),rgba(124,58,237,0.06))", borderColor: "rgba(124,58,237,0.5)" }}>
+          <CardContent className="p-4">
+            <div className="flex flex-col sm:flex-row gap-4 items-start sm:items-center">
+              {/* Big digit callout */}
+              <div className="flex items-center gap-4 shrink-0">
+                <div
+                  className="w-20 h-20 rounded-2xl flex flex-col items-center justify-center font-black border-2 shrink-0"
+                  style={{ background: "rgba(124,58,237,0.3)", borderColor: "#a78bfa", boxShadow: "0 0 28px rgba(124,58,237,0.5)" }}
+                >
+                  <span className="text-4xl text-white leading-none">{freq.sorted[0].digit}</span>
+                  <span className="text-[10px] text-purple-300 mt-0.5 font-semibold tracking-wide">MATCH IT</span>
+                </div>
+                <div>
+                  <div className="flex items-center gap-2 mb-1">
+                    <TrendingUp className="w-4 h-4 text-purple-400" />
+                    <span className="text-sm font-bold text-purple-200">Most Frequent Digit</span>
+                  </div>
+                  <div className="text-3xl font-black text-white leading-none">{freq.sorted[0].pct.toFixed(1)}<span className="text-base text-purple-300 ml-1">%</span></div>
+                  <div className="text-xs text-purple-300 mt-0.5">{freq.counts[freq.sorted[0].digit]} times in last {freq.total} ticks</div>
+                  <div className="mt-2">
+                    <Badge style={{ background: "rgba(124,58,237,0.35)", color: "#c4b5fd", border: "1px solid rgba(167,139,250,0.4)" }} className="text-[10px]">
+                      ⚡ MATCHES {freq.sorted[0].digit} — Frequency Dominance
+                    </Badge>
+                  </div>
+                </div>
+              </div>
+
+              {/* Mini frequency bar chart */}
+              <div className="flex-1 w-full">
+                <div className="text-[10px] text-purple-300/60 uppercase tracking-wider mb-2 font-semibold">Digit Frequency · Last {freq.total} Ticks</div>
+                <div className="flex items-end gap-1 h-12">
+                  {freq.pcts.map((p, d) => {
+                    const isTop = d === freq.sorted[0].digit;
+                    const isSecond = d === freq.sorted[1].digit;
+                    return (
+                      <div key={d} className="flex-1 flex flex-col items-center gap-0.5">
+                        <div
+                          className="w-full rounded-t-sm transition-all"
+                          style={{
+                            height: `${Math.max((p / (freq.sorted[0].pct || 1)) * 44, 4)}px`,
+                            background: isTop
+                              ? "linear-gradient(to top,#7c3aed,#a78bfa)"
+                              : isSecond
+                              ? "rgba(124,58,237,0.4)"
+                              : "rgba(255,255,255,0.08)",
+                            boxShadow: isTop ? "0 0 8px rgba(167,139,250,0.6)" : "none",
+                          }}
+                        />
+                        <span
+                          className="text-[9px] font-mono font-bold"
+                          style={{ color: isTop ? "#c4b5fd" : "rgba(255,255,255,0.3)" }}
+                        >
+                          {d}
+                        </span>
+                      </div>
+                    );
+                  })}
+                </div>
+                {/* Top 3 label row */}
+                <div className="flex gap-3 mt-2 flex-wrap">
+                  {freq.sorted.slice(0, 3).map((item, rank) => (
+                    <span key={item.digit} className="text-[10px] font-mono" style={{ color: rank === 0 ? "#a78bfa" : rank === 1 ? "#818cf8" : "rgba(255,255,255,0.35)" }}>
+                      #{rank + 1} · Digit {item.digit} · {item.pct.toFixed(1)}%
+                    </span>
+                  ))}
+                </div>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       {!historyLoaded ? (
         <Card className="bg-card border-border">
