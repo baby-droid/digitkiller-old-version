@@ -34,7 +34,7 @@ type Signal = {
   risk: "Low" | "Medium" | "High";
   enterNow: boolean;
   reason: string;
-  freqs: number[];
+  freqs?: number[];
 };
 
 function buildSignals(digits: number[], lastDigit: number | null, tab: TabId): Signal[] {
@@ -336,22 +336,24 @@ export default function TickGenerator() {
               </CardHeader>
               <CardContent className="space-y-2 pt-0">
                 {/* Freq mini-bars */}
-                <div className="flex h-7 gap-0.5 items-end bg-muted/30 rounded p-1">
-                  {sig.freqs.map((f, i) => (
-                    <div
-                      key={i}
-                      className="flex-1 rounded-t-sm transition-all"
-                      style={{
-                        height: `${Math.max(f * 2.5, 8)}%`,
-                        backgroundColor: i === sig.freqs.indexOf(Math.max(...sig.freqs)) ? "#10b981"
-                          : i === sig.freqs.indexOf(Math.min(...sig.freqs)) ? "#ef4444"
-                          : DIGIT_COLORS[i],
-                        opacity: 0.7,
-                      }}
-                      title={`${i}: ${f.toFixed(1)}%`}
-                    />
-                  ))}
-                </div>
+                {sig.freqs && (
+                  <div className="flex h-7 gap-0.5 items-end bg-muted/30 rounded p-1">
+                    {sig.freqs.map((f, i) => (
+                      <div
+                        key={i}
+                        className="flex-1 rounded-t-sm transition-all"
+                        style={{
+                          height: `${Math.max(f * 2.5, 8)}%`,
+                          backgroundColor: i === sig.freqs!.indexOf(Math.max(...sig.freqs!)) ? "#10b981"
+                            : i === sig.freqs!.indexOf(Math.min(...sig.freqs!)) ? "#ef4444"
+                            : DIGIT_COLORS[i],
+                          opacity: 0.7,
+                        }}
+                        title={`${i}: ${f.toFixed(1)}%`}
+                      />
+                    ))}
+                  </div>
+                )}
 
                 <div className="text-[10px] text-muted-foreground bg-muted/50 rounded p-2 leading-relaxed">
                   {sig.reason}

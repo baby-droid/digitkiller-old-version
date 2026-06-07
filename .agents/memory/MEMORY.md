@@ -1,0 +1,1 @@
+- [Digit Killer project](digit-killer.md) — trading dashboard; user data path, auth, WebSocket, new pages, layout patterns

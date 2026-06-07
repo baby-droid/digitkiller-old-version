@@ -40,7 +40,6 @@ function DigitCircles({ digits, lastDigit }: { digits: number[]; lastDigit: numb
   const counts = new Array(10).fill(0);
   digits.forEach((d) => counts[d]++);
   const pcts = counts.map((c) => (c / total) * 100);
-  const maxPct = Math.max(...pcts);
 
   /* rank 0 = highest freq, rank 9 = lowest */
   const ranked = [...pcts]
@@ -56,7 +55,7 @@ function DigitCircles({ digits, lastDigit }: { digits: number[]; lastDigit: numb
         {Array.from({ length: 10 }, (_, i) => {
           const isCurrent = lastDigit === i;
           const rank      = rankOf[i];
-          const sz        = Math.round(Math.max(36, Math.min(62, 40 + (pcts[i] - 10) * 2.8)));
+          const sz        = Math.round(Math.max(46, Math.min(72, 50 + (pcts[i] - 10) * 2.8)));
 
           let bgColor     = "transparent";
           let borderColor = "rgba(255,255,255,0.15)";
@@ -66,16 +65,20 @@ function DigitCircles({ digits, lastDigit }: { digits: number[]; lastDigit: numb
 
           if (isCurrent) {
             bgColor = "#00d1d1"; borderColor = "#00d1d1";
-            textColor = "#000"; glow = "0 0 18px rgba(0,209,209,0.7)"; fw = "900";
+            textColor = "#000"; glow = "0 0 20px rgba(0,209,209,0.8)"; fw = "900";
           } else if (rank === 0) {
             bgColor = "#15803d"; borderColor = "#22c55e";
-            textColor = "#fff"; glow = "0 0 10px rgba(34,197,94,0.4)"; fw = "800";
+            textColor = "#fff"; glow = "0 0 12px rgba(34,197,94,0.5)"; fw = "900";
+          } else if (rank === 1) {
+            bgColor = "#1e3a8a"; borderColor = "#3b82f6";
+            textColor = "#fff"; glow = "0 0 10px rgba(59,130,246,0.4)"; fw = "800";
+          } else if (rank === 8) {
+            bgColor = "#713f12"; borderColor = "#eab308";
+            textColor = "#fff"; glow = "0 0 10px rgba(234,179,8,0.35)"; fw = "700";
           } else if (rank === 9) {
-            bgColor = "#dc2626"; borderColor = "#ef4444";
+            bgColor = "#7f1d1d"; borderColor = "#ef4444";
             textColor = "#fff"; glow = "0 0 10px rgba(220,38,38,0.35)"; fw = "700";
           }
-
-          const barW = maxPct > 0 ? (pcts[i] / maxPct) * 100 : 0;
 
           return (
             <div key={i} className="flex flex-col items-center gap-0.5 flex-1">
@@ -124,63 +127,26 @@ function DigitCircles({ digits, lastDigit }: { digits: number[]; lastDigit: numb
                 {pcts[i].toFixed(1)}%
               </span>
 
-              {/* ── Frequency bar ── */}
-              <div
-                className="w-full rounded-full overflow-hidden"
-                style={{ height: 4, backgroundColor: "rgba(255,255,255,0.08)" }}
-              >
-                <div
-                  className="h-full rounded-full"
-                  style={{
-                    width: `${barW}%`,
-                    backgroundColor: D_COLORS[i].bg,
-                    transition: "width 0.5s ease",
-                  }}
-                />
-              </div>
-
-              {/* ── Rank dot: green=highest, blue=2nd highest, yellow=2nd lowest, red=lowest ── */}
-              <div className="h-3 flex items-center justify-center">
-                {rank === 0 && (
-                  <div className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: "#22c55e", boxShadow: "0 0 4px #22c55e" }} />
-                )}
-                {rank === 1 && (
-                  <div className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: "#3b82f6", boxShadow: "0 0 4px #3b82f6" }} />
-                )}
-                {rank === 8 && (
-                  <div className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: "#eab308", boxShadow: "0 0 4px #eab308" }} />
-                )}
-                {rank === 9 && (
-                  <div className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: "#ef4444", boxShadow: "0 0 4px #ef4444" }} />
-                )}
-              </div>
             </div>
           );
         })}
       </div>
 
       {/* legend */}
-      <div className="flex flex-wrap gap-3 mt-3 text-[9px] text-muted-foreground">
-        <span className="flex items-center gap-1">
-          <span className="inline-block w-3 h-1 rounded-full" style={{ backgroundColor: "#a855f7" }} />
-          current
-        </span>
-        <span className="flex items-center gap-1">
-          <span className="inline-block w-3 h-1 rounded-full bg-green-500" />
-          highest
-        </span>
-        <span className="flex items-center gap-1">
-          <span className="inline-block w-3 h-1 rounded-full" style={{ backgroundColor: "#3b82f6" }} />
-          2nd highest
-        </span>
-        <span className="flex items-center gap-1">
-          <span className="inline-block w-3 h-1 rounded-full" style={{ backgroundColor: "#eab308" }} />
-          2nd lowest
-        </span>
-        <span className="flex items-center gap-1">
-          <span className="inline-block w-3 h-1 rounded-full bg-red-500" />
-          lowest
-        </span>
+      <div className="flex flex-wrap gap-3 mt-4 text-[9px] text-muted-foreground">
+        {[
+          { color: "#00d1d1", label: "current" },
+          { color: "#22c55e", label: "highest" },
+          { color: "#3b82f6", label: "2nd highest" },
+          { color: "rgba(255,255,255,0.2)", label: "normal" },
+          { color: "#eab308", label: "2nd lowest" },
+          { color: "#ef4444", label: "lowest" },
+        ].map(({ color, label }) => (
+          <span key={label} className="flex items-center gap-1.5">
+            <span className="inline-block w-3 h-3 rounded-full border" style={{ backgroundColor: color, borderColor: color }} />
+            {label}
+          </span>
+        ))}
       </div>
     </div>
   );
@@ -323,7 +289,6 @@ export default function WideEye() {
                 background: "rgba(0,0,0,0.5)",
                 border: "1px solid #166534",
                 color: "#86efac",
-                focusRingColor: "#16a34a",
               }}
             >
               {allMarkets.map(([cat, mkts]) => (

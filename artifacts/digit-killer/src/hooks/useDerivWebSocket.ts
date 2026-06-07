@@ -65,31 +65,40 @@ export const CATEGORY_LABELS: Record<MarketCategory, string> = {
 
 export const MARKETS: Market[] = Object.values(MARKETS_BY_CATEGORY).flat();
 
-const WS_URL = "wss://ws.binaryws.com/websockets/v3?app_id=1089";
+const WS_URL    = "wss://ws.binaryws.com/websockets/v3?app_id=1089";
+const PING_MS   = 25000;
+const MAX_TICKS = 1500;
 
 /**
  * Extract the last digit of a price using the exact pip_size from the API.
- * pip_size = number of decimal places the market uses.
- * e.g. Vol 10: price=1234.560, pip_size=3 → "1234.560" → last char "0" → digit 0
  */
 export function extractDigit(price: number, pipSize: number): number {
-  const formatted = price.toFixed(pipSize);            // "1234.560"
-  const digits = formatted.replace(".", "");           // "1234560"
-  return parseInt(digits.slice(-1), 10);               // 0
+  const formatted = price.toFixed(pipSize);
+  const digits = formatted.replace(".", "");
+  return parseInt(digits.slice(-1), 10);
 }
 
 export function useDerivWebSocket(symbol: string) {
-  const [digits,       setDigits]       = useState<TickData[]>([]);
-  const [isConnected,  setIsConnected]  = useState(false);
-  const [historyLoaded,setHistoryLoaded]= useState(false);
-  const wsRef    = useRef<WebSocket | null>(null);
-  const pipRef   = useRef<number>(4); // updated from API as soon as first msg arrives
+  const [digits,        setDigits]        = useState<TickData[]>([]);
+  const [isConnected,   setIsConnected]   = useState(false);
+  const [historyLoaded, setHistoryLoaded] = useState(false);
+  const wsRef   = useRef<WebSocket | null>(null);
+  const pingRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const pipRef  = useRef<number>(4);
+
+  const clearPing = () => {
+    if (pingRef.current) { clearInterval(pingRef.current); pingRef.current = null; }
+  };
 
   const connect = useCallback(() => {
     if (wsRef.current) {
       wsRef.current.onclose = null;
+      wsRef.current.onerror = null;
+      wsRef.current.onmessage = null;
       wsRef.current.close();
+      wsRef.current = null;
     }
+    clearPing();
 
     const ws = new WebSocket(WS_URL);
     wsRef.current = ws;
@@ -98,7 +107,11 @@ export function useDerivWebSocket(symbol: string) {
       setIsConnected(true);
       setDigits([]);
       setHistoryLoaded(false);
-      // Request 1000 historical ticks + live subscription in one call
+
+      pingRef.current = setInterval(() => {
+        if (ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify({ ping: 1 }));
+      }, PING_MS);
+
       ws.send(JSON.stringify({
         ticks_history: symbol,
         end: "latest",
@@ -108,57 +121,54 @@ export function useDerivWebSocket(symbol: string) {
       }));
     };
 
-    ws.onmessage = (event) => {
-      const data = JSON.parse(event.data);
+    ws.onmessage = (event: MessageEvent) => {
+      const data = JSON.parse(event.data as string);
 
-      // ── history batch ─────────────────────────────────────────────────────
       if (data.msg_type === "history" && data.history) {
-        // pip_size is at the top level of the history response
         if (typeof data.pip_size === "number") pipRef.current = data.pip_size;
         const pip = pipRef.current;
-
         const { prices, times } = data.history as { prices: number[]; times: number[] };
         const ticks: TickData[] = prices.map((p, i) => ({
-          price: p,
-          digit: extractDigit(p, pip),
-          time:  times[i],
+          price: p, digit: extractDigit(p, pip), time: times[i],
         }));
         setDigits(ticks);
         setHistoryLoaded(true);
         return;
       }
 
-      // ── live tick ─────────────────────────────────────────────────────────
       if (data.msg_type === "tick" && data.tick) {
-        // pip_size is inside the tick object for live updates
         if (typeof data.tick.pip_size === "number") pipRef.current = data.tick.pip_size;
         const pip   = pipRef.current;
         const price = data.tick.quote as number;
         const time  = data.tick.epoch as number;
         const digit = extractDigit(price, pip);
-
         setDigits((prev) => {
           const next = [...prev, { price, digit, time }];
-          if (next.length > 1500) next.shift();
-          return next;
+          return next.length > MAX_TICKS ? next.slice(-MAX_TICKS) : next;
         });
       }
     };
 
     ws.onclose = () => {
       setIsConnected(false);
-      setTimeout(connect, 2000);
+      clearPing();
+      setTimeout(connect, 3000);
     };
 
-    ws.onerror = () => ws.close();
+    ws.onerror = () => {
+      clearPing();
+      ws.close();
+    };
   }, [symbol]);
 
   useEffect(() => {
     connect();
     return () => {
+      clearPing();
       if (wsRef.current) {
         wsRef.current.onclose = null;
         wsRef.current.close();
+        wsRef.current = null;
       }
     };
   }, [connect]);
@@ -174,27 +184,30 @@ export type PriceData = { price: number; time: number };
 export function useForexWebSocket(symbol: string) {
   const [prices,      setPrices]      = useState<PriceData[]>([]);
   const [isConnected, setIsConnected] = useState(false);
-  const wsRef = useRef<WebSocket | null>(null);
+  const wsRef   = useRef<WebSocket | null>(null);
+  const pingRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  const clearPing = () => {
+    if (pingRef.current) { clearInterval(pingRef.current); pingRef.current = null; }
+  };
 
   const connect = useCallback(() => {
-    if (wsRef.current) { wsRef.current.onclose = null; wsRef.current.close(); }
+    if (wsRef.current) { wsRef.current.onclose = null; wsRef.current.close(); wsRef.current = null; }
+    clearPing();
     const ws = new WebSocket(WS_URL);
     wsRef.current = ws;
 
     ws.onopen = () => {
       setIsConnected(true);
       setPrices([]);
-      ws.send(JSON.stringify({
-        ticks_history: symbol,
-        end: "latest",
-        count: 500,
-        style: "ticks",
-        subscribe: 1,
-      }));
+      pingRef.current = setInterval(() => {
+        if (ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify({ ping: 1 }));
+      }, PING_MS);
+      ws.send(JSON.stringify({ ticks_history: symbol, end: "latest", count: 500, style: "ticks", subscribe: 1 }));
     };
 
-    ws.onmessage = (event) => {
-      const data = JSON.parse(event.data);
+    ws.onmessage = (event: MessageEvent) => {
+      const data = JSON.parse(event.data as string);
       if (data.msg_type === "history" && data.history) {
         const { prices: ps, times: ts } = data.history as { prices: number[]; times: number[] };
         setPrices(ps.map((p, i) => ({ price: p, time: ts[i] })));
@@ -203,21 +216,17 @@ export function useForexWebSocket(symbol: string) {
       if (data.msg_type === "tick" && data.tick) {
         const price = data.tick.quote as number;
         const time  = data.tick.epoch as number;
-        setPrices((prev) => {
-          const next = [...prev, { price, time }];
-          if (next.length > 1000) next.shift();
-          return next;
-        });
+        setPrices((prev) => { const next = [...prev, { price, time }]; return next.length > 1000 ? next.slice(-1000) : next; });
       }
     };
 
-    ws.onclose = () => { setIsConnected(false); setTimeout(connect, 2000); };
-    ws.onerror = () => ws.close();
+    ws.onclose = () => { setIsConnected(false); clearPing(); setTimeout(connect, 3000); };
+    ws.onerror = () => { clearPing(); ws.close(); };
   }, [symbol]);
 
   useEffect(() => {
     connect();
-    return () => { if (wsRef.current) { wsRef.current.onclose = null; wsRef.current.close(); } };
+    return () => { clearPing(); if (wsRef.current) { wsRef.current.onclose = null; wsRef.current.close(); wsRef.current = null; } };
   }, [connect]);
 
   const currentPrice = prices.length > 0 ? prices[prices.length - 1].price : null;
