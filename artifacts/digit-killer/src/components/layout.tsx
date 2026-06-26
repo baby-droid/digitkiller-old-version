@@ -1,13 +1,13 @@
 import { Link, useLocation } from "wouter";
 import { useState, useEffect } from "react";
 import { GlobalSignalMonitor } from "@/components/global-signal-monitor";
-import { unlockAudio } from "@/lib/sound";
+import { unlockAudio, getSoundEnabled, toggleSound } from "@/lib/sound";
 import {
   LayoutDashboard, Activity, Zap, Binary, MonitorPlay,
   Lightbulb, BrainCircuit, TrendingUp, Settings, Cpu,
   BrainCog, TrendingDown, DollarSign, Sparkles, LogOut,
   Eye, Calculator, ChevronLeft, ChevronRight, Menu, X,
-  ArrowUpDown, BarChart2,
+  ArrowUpDown, BarChart2, Volume2, VolumeX,
 } from "lucide-react";
 import {
   MARKETS, MARKETS_BY_CATEGORY, CATEGORY_LABELS, MarketCategory,
@@ -53,6 +53,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
   const [mobileOpen,  setMobileOpen]  = useState(false);
   const [deferredPrompt, setDeferredPrompt] = useState<Event & { prompt?: () => void } | null>(null);
   const [showInstall,    setShowInstall]    = useState(false);
+  const [soundOn,        setSoundOn]        = useState(() => getSoundEnabled());
 
   useEffect(() => { setMobileOpen(false); }, [location]);
 
@@ -71,11 +72,10 @@ export function Layout({ children }: { children: React.ReactNode }) {
     return () => window.removeEventListener("beforeinstallprompt", handler);
   }, []);
 
-  const handleInstall = async () => {
-    if (!deferredPrompt?.prompt) return;
-    deferredPrompt.prompt();
-    setDeferredPrompt(null);
-    setShowInstall(false);
+  const handleSoundToggle = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    const next = toggleSound();
+    setSoundOn(next);
   };
 
   const activeMkt         = MARKETS.find((m) => m.symbol === activeMarket);
@@ -139,13 +139,34 @@ export function Layout({ children }: { children: React.ReactNode }) {
             <span className="text-[10px] font-mono text-muted-foreground truncate">
               {isAdmin ? "👑 ADMIN" : `👤 ${session?.userName ?? "User"}`}
             </span>
-            <button onClick={logout} className="text-muted-foreground hover:text-destructive transition-colors ml-2 flex-shrink-0" title="Logout">
-              <LogOut className="w-3.5 h-3.5" />
-            </button>
+            <div className="flex items-center gap-2 ml-2 flex-shrink-0">
+              {/* Sound toggle (sidebar) */}
+              <button
+                onClick={handleSoundToggle}
+                title={soundOn ? "Sound ON — click to mute" : "Sound OFF — click to unmute"}
+                className="text-muted-foreground hover:text-foreground transition-colors"
+              >
+                {soundOn
+                  ? <Volume2 className="w-3.5 h-3.5 text-primary" />
+                  : <VolumeX className="w-3.5 h-3.5 text-red-400" />}
+              </button>
+              <button onClick={logout} className="text-muted-foreground hover:text-destructive transition-colors" title="Logout">
+                <LogOut className="w-3.5 h-3.5" />
+              </button>
+            </div>
           </div>
         )}
         {collapsed && (
-          <div className="py-2 border-b border-sidebar-border/50 flex justify-center">
+          <div className="py-2 border-b border-sidebar-border/50 flex flex-col items-center gap-2">
+            <button
+              onClick={handleSoundToggle}
+              title={soundOn ? "Sound ON" : "Sound OFF"}
+              className="text-muted-foreground hover:text-foreground transition-colors"
+            >
+              {soundOn
+                ? <Volume2 className="w-3.5 h-3.5 text-primary" />
+                : <VolumeX className="w-3.5 h-3.5 text-red-400" />}
+            </button>
             <button onClick={logout} className="text-muted-foreground hover:text-destructive transition-colors" title="Logout">
               <LogOut className="w-3.5 h-3.5" />
             </button>
@@ -220,14 +241,22 @@ export function Layout({ children }: { children: React.ReactNode }) {
             <span className="font-bold text-sm tracking-wide" style={{ color: "#4ade80" }}>FOREX ANALYSIS</span>
             <span className="text-green-700 text-xs">|</span>
             <span className="font-mono text-sm font-bold text-white">Gold / USD · XAU/USD</span>
-            <div className="ml-auto flex items-center gap-2 text-xs text-green-500 font-mono">
+            <div className="ml-auto flex items-center gap-3 text-xs text-green-500 font-mono">
               <div className="w-2 h-2 rounded-full bg-yellow-400 animate-pulse" />
               Live Spot
+              {/* Sound toggle in header (forex page) */}
+              <button
+                onClick={handleSoundToggle}
+                title={soundOn ? "Sound ON" : "Sound OFF"}
+                className="ml-2 text-green-500 hover:text-green-300 transition-colors"
+              >
+                {soundOn ? <Volume2 className="w-4 h-4" /> : <VolumeX className="w-4 h-4 text-red-400" />}
+              </button>
             </div>
           </header>
         ) : (
           <header className="flex-shrink-0 border-b" style={{ background: "linear-gradient(180deg,rgba(5,46,22,0.9) 0%,rgba(3,25,12,0.95) 100%)", borderColor: "#166534" }}>
-            {/* Row 1: hamburger + categories */}
+            {/* Row 1: hamburger + categories + sound toggle */}
             <div className="flex items-center px-3 gap-1 h-10 border-b overflow-x-auto hide-scrollbar" style={{ borderColor: "#14532d" }}>
               <button
                 onClick={() => setMobileOpen(true)}
@@ -254,6 +283,20 @@ export function Layout({ children }: { children: React.ReactNode }) {
                   {CATEGORY_LABELS[cat]}
                 </button>
               ))}
+              {/* Sound toggle — always visible in header */}
+              <button
+                onClick={handleSoundToggle}
+                title={soundOn ? "Sound ON — click to mute" : "Sound OFF — click to unmute"}
+                className="ml-auto flex-shrink-0 flex items-center gap-1 px-2 py-1 rounded border transition-all text-[10px] font-bold"
+                style={{
+                  borderColor: soundOn ? "#22c55e55" : "#ef444455",
+                  color:       soundOn ? "#22c55e"   : "#ef4444",
+                  background:  soundOn ? "rgba(34,197,94,0.08)" : "rgba(239,68,68,0.08)",
+                }}
+              >
+                {soundOn ? <Volume2 className="w-3.5 h-3.5" /> : <VolumeX className="w-3.5 h-3.5" />}
+                <span className="hidden sm:inline">{soundOn ? "Sound ON" : "MUTED"}</span>
+              </button>
             </div>
             {/* Row 2: market pills */}
             <div className="flex items-center px-3 gap-1.5 h-11 overflow-x-auto hide-scrollbar">
@@ -316,6 +359,15 @@ export function Layout({ children }: { children: React.ReactNode }) {
             </Link>
           );
         })}
+        {/* Sound toggle in mobile bottom bar */}
+        <button
+          onClick={handleSoundToggle}
+          className="flex flex-col items-center justify-center gap-0.5 px-3 py-1 rounded-lg transition-all"
+          style={{ color: soundOn ? "#00d1d1" : "#ef4444" }}
+        >
+          {soundOn ? <Volume2 className="w-5 h-5" /> : <VolumeX className="w-5 h-5" />}
+          <span className="text-[9px] font-bold tracking-wide">{soundOn ? "Sound" : "Muted"}</span>
+        </button>
         {/* Hamburger to open full sidebar */}
         <button
           onClick={() => setMobileOpen(true)}

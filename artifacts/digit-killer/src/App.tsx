@@ -5,6 +5,7 @@ import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { MarketProvider } from "@/lib/market-context";
 import { AuthProvider, useAuth } from "@/lib/auth-context";
+import { AppSettingsProvider } from "@/lib/app-settings-context";
 import { Layout } from "@/components/layout";
 import { LoadingScreen } from "@/components/loading-screen";
 
@@ -18,7 +19,7 @@ import Forex          from "@/pages/forex";
 import Analysis       from "@/pages/analysis";
 import TradeDesk      from "@/pages/trade-desk";
 import Strategies     from "@/pages/strategies";
-import MockPages      from "@/pages/mock-pages";
+import Performance    from "@/pages/performance";
 import Settings       from "@/pages/settings";
 import WideEye        from "@/pages/wide-eye";
 import RiskCalculator from "@/pages/risk-calculator";
@@ -59,7 +60,7 @@ function AppContent() {
         <Route path="/wide-eye"        component={WideEye} />
         <Route path="/risk-calculator" component={RiskCalculator} />
         <Route path="/learning"        component={AILearning} />
-        <Route path="/performance"     component={MockPages} />
+        <Route path="/performance"     component={Performance} />
         <Route path="/settings"        component={Settings} />
         <Route path="/matches-differs" component={MatchesDiffers} />
         <Route path="/only-ups-downs"  component={OnlyUpsDowns} />
@@ -74,16 +75,18 @@ function AppContent() {
 function App() {
   return (
     <QueryClientProvider client={queryClient}>
-      <AuthProvider>
-        <MarketProvider>
-          <TooltipProvider>
-            <WouterRouter base={import.meta.env.BASE_URL.replace(/\/$/, "")}>
-              <AppContent />
-            </WouterRouter>
-            <Toaster />
-          </TooltipProvider>
-        </MarketProvider>
-      </AuthProvider>
+      <AppSettingsProvider>
+        <AuthProvider>
+          <MarketProvider>
+            <TooltipProvider>
+              <WouterRouter base={import.meta.env.BASE_URL.replace(/\/$/, "")}>
+                <AppContent />
+              </WouterRouter>
+              <Toaster />
+            </TooltipProvider>
+          </MarketProvider>
+        </AuthProvider>
+      </AppSettingsProvider>
     </QueryClientProvider>
   );
 }
