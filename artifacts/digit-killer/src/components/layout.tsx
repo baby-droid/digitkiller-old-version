@@ -5,7 +5,7 @@ import {
   Lightbulb, BrainCircuit, TrendingUp, Settings, Cpu,
   BrainCog, TrendingDown, DollarSign, Sparkles, LogOut,
   Eye, Calculator, ChevronLeft, ChevronRight, Menu, X,
-  ArrowUpDown, BarChart2, RefreshCw,
+  ArrowUpDown, BarChart2,
 } from "lucide-react";
 import {
   MARKETS, MARKETS_BY_CATEGORY, CATEGORY_LABELS, MarketCategory,
@@ -49,8 +49,27 @@ export function Layout({ children }: { children: React.ReactNode }) {
   const [activeCategory, setActiveCategory] = useState<MarketCategory>("volatility");
   const [collapsed,   setCollapsed]   = useState(false);
   const [mobileOpen,  setMobileOpen]  = useState(false);
+  const [deferredPrompt, setDeferredPrompt] = useState<Event & { prompt?: () => void } | null>(null);
+  const [showInstall,    setShowInstall]    = useState(false);
 
   useEffect(() => { setMobileOpen(false); }, [location]);
+
+  useEffect(() => {
+    const handler = (e: Event) => {
+      e.preventDefault();
+      setDeferredPrompt(e as Event & { prompt?: () => void });
+      setShowInstall(true);
+    };
+    window.addEventListener("beforeinstallprompt", handler);
+    return () => window.removeEventListener("beforeinstallprompt", handler);
+  }, []);
+
+  const handleInstall = async () => {
+    if (!deferredPrompt?.prompt) return;
+    deferredPrompt.prompt();
+    setDeferredPrompt(null);
+    setShowInstall(false);
+  };
 
   const activeMkt         = MARKETS.find((m) => m.symbol === activeMarket);
   const activeMarketName  = activeMkt?.name ?? activeMarket;
@@ -249,13 +268,86 @@ export function Layout({ children }: { children: React.ReactNode }) {
         )}
 
         {/* ── Page content ── */}
-        <main className="flex-1 overflow-y-auto p-4 md:p-6 relative">
+        <main className="flex-1 overflow-y-auto p-3 md:p-6 pb-20 md:pb-6 relative">
           <div className="absolute inset-0 pointer-events-none"
             style={{ background: "radial-gradient(ellipse at 70% 0%,rgba(0,209,209,0.04),transparent 60%)" }}
           />
           <div className="relative z-10 h-full">{children}</div>
         </main>
       </div>
+
+      {/* ── Mobile bottom navigation bar (portrait) ── */}
+      <nav
+        className="md:hidden fixed bottom-0 inset-x-0 z-50 flex items-center justify-around border-t"
+        style={{
+          background: "linear-gradient(180deg,rgba(3,25,12,0.98) 0%,rgba(1,15,7,1) 100%)",
+          borderColor: "#166534",
+          height: 60,
+          paddingBottom: "env(safe-area-inset-bottom, 0px)",
+        }}
+      >
+        {[
+          { href: "/",          icon: LayoutDashboard, label: "Home"     },
+          { href: "/wide-eye",  icon: Eye,             label: "Wide Eye" },
+          { href: "/scanner",   icon: Activity,        label: "Scanner"  },
+          { href: "/smart-signals", icon: Sparkles,    label: "Signals"  },
+          { href: "/settings",  icon: Settings,        label: "Settings" },
+        ].map(({ href, icon: Icon, label }) => {
+          const active = location === href;
+          return (
+            <Link
+              key={href}
+              href={href}
+              className="flex flex-col items-center justify-center gap-0.5 px-3 py-1 rounded-lg transition-all"
+              style={{ color: active ? "#00d1d1" : "#4b7a56" }}
+            >
+              <Icon className="w-5 h-5 flex-shrink-0" />
+              <span className="text-[9px] font-bold tracking-wide">{label}</span>
+            </Link>
+          );
+        })}
+        {/* Hamburger to open full sidebar */}
+        <button
+          onClick={() => setMobileOpen(true)}
+          className="flex flex-col items-center justify-center gap-0.5 px-3 py-1 rounded-lg transition-all"
+          style={{ color: "#4b7a56" }}
+        >
+          <Menu className="w-5 h-5" />
+          <span className="text-[9px] font-bold tracking-wide">More</span>
+        </button>
+      </nav>
+
+      {/* ── PWA Install prompt banner ── */}
+      {showInstall && (
+        <div
+          className="md:hidden fixed bottom-16 inset-x-3 z-50 flex items-center justify-between gap-3 rounded-xl border px-4 py-3"
+          style={{
+            background: "linear-gradient(135deg,rgba(0,30,15,0.98) 0%,rgba(0,50,25,0.98) 100%)",
+            borderColor: "#00d1d1",
+            boxShadow: "0 0 20px rgba(0,209,209,0.3)",
+          }}
+        >
+          <div>
+            <div className="text-xs font-black text-primary">Install Digit Killer</div>
+            <div className="text-[10px] text-muted-foreground">Add to your home screen for offline access</div>
+          </div>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={handleInstall}
+              className="px-3 py-1.5 rounded-lg text-xs font-black"
+              style={{ backgroundColor: "#00d1d1", color: "#000" }}
+            >
+              Install
+            </button>
+            <button
+              onClick={() => setShowInstall(false)}
+              className="text-muted-foreground"
+            >
+              <X className="w-4 h-4" />
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

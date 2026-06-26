@@ -1,0 +1,367 @@
+DERIV OVER / UNDER MASTER NOTES
+100-Tick Digit Distribution Analysis
+(No Candlesticks – Digits Only)
+CHAPTER 1
+Understanding Over & Under Contracts
+
+There are 10 possible last digits.
+
+0 1 2 3 4 5 6 7 8 9
+OVER
+
+You win if the last digit is greater than the selected number.
+
+Example:
+
+Over 5
+
+Winning digits
+
+6
+7
+8
+9
+
+Losing digits
+
+0
+1
+2
+3
+4
+5
+UNDER
+
+You win if the last digit is less than the selected number.
+
+Example
+
+Under 5
+
+Winning digits
+
+0
+1
+2
+3
+4
+
+Losing digits
+
+5
+6
+7
+8
+9
+CHAPTER 2
+Probability Table
+Contract	Winning Digits	Approx. Win Probability
+Over 0	1–9	90%
+Over 1	2–9	80%
+Over 2	3–9	70%
+Over 3	4–9	60%
+Over 4	5–9	50%
+Over 5	6–9	40%
+Over 6	7–9	30%
+Over 7	8–9	20%
+Under 9	0–8	90%
+Under 8	0–7	80%
+Under 7	0–6	70%
+Under 6	0–5	60%
+Under 5	0–4	50%
+Under 4	0–3	40%
+Under 3	0–2	30%
+Under 2	0–1	20%
+Under 1	0	10%
+CHAPTER 3
+Reading the Last 100 Ticks
+
+Example
+
+0 = 8%
+
+1 = 9%
+
+2 = 7%
+
+3 = 11%
+
+4 = 13%
+
+5 = 12%
+
+6 = 11%
+
+7 = 10%
+
+8 = 9%
+
+9 = 10%
+
+You can total the percentages that would count as wins for a given contract.
+
+Example:
+
+Over 4
+
+5 + 6 + 7 + 8 + 9
+
+12 +11 +10 +9 +10
+
+=52%
+
+This tells you what has happened in the recent sample, not what must happen next.
+
+CHAPTER 4
+Over 0 Analysis
+
+Winning digits
+
+1
+2
+3
+4
+5
+6
+7
+8
+9
+
+Observe:
+
+Frequency of digit 0.
+Whether 0 has been unusually common or rare in the recent window.
+CHAPTER 5
+Over 1
+
+Winning digits
+
+2
+3
+4
+5
+6
+7
+8
+9
+
+Observe:
+
+Combined frequency of 2–9.
+Frequency of 0 and 1 together.
+CHAPTER 6
+Over 2
+
+Winning digits
+
+3
+4
+5
+6
+7
+8
+9
+
+Observe whether 0–2 have recently represented a large or small share of the sample.
+
+CHAPTER 7
+Over 3
+
+Winning digits
+
+4
+5
+6
+7
+8
+9
+
+Track:
+
+Sum of 4–9.
+Sum of 0–3.
+CHAPTER 8
+Over 4 (Balanced Split)
+
+Winning digits
+
+5
+6
+7
+8
+9
+
+This is a 5-versus-5 split by digit count and is often used as a neutral reference when studying distributions.
+
+CHAPTER 9
+Over 5
+
+Winning digits
+
+6
+7
+8
+9
+
+Track:
+
+Frequency of 6–9.
+Frequency of 0–5.
+CHAPTER 10
+Over 6
+
+Winning digits
+
+7
+8
+9
+
+A narrower winning set means higher payouts but lower probability of success.
+
+CHAPTER 11
+Over 7
+
+Winning digits
+
+8
+9
+
+Only two winning digits.
+
+Observe:
+
+Frequency of 8 and 9.
+Whether they have recently appeared more or less often than their long-run expectation.
+CHAPTER 12
+Under 9
+
+Winning digits
+
+0
+1
+2
+3
+4
+5
+6
+7
+8
+
+Observe the frequency of digit 9 in the recent sample.
+
+CHAPTER 13
+Under 8
+
+Winning digits
+
+0
+1
+2
+3
+4
+5
+6
+7
+
+Track:
+
+Total of 0–7.
+Frequency of 8 and 9.
+CHAPTER 14
+Under 7
+
+Winning digits
+
+0
+1
+2
+3
+4
+5
+6
+
+Observe the balance between lower digits (0–6) and higher digits (7–9).
+
+CHAPTER 15
+Under 6
+
+Winning digits
+
+0
+1
+2
+3
+4
+5
+
+Compare:
+
+Total of 0–5.
+Total of 6–9.
+CHAPTER 16
+Under 5
+
+Winning digits
+
+0
+1
+2
+3
+4
+
+This is another balanced 5-versus-5 split by digit count and can be used as a neutral observation point.
+
+CHAPTER 17
+Under 4
+
+Winning digits
+
+0
+1
+2
+3
+
+Observe whether lower digits have recently been concentrated or dispersed.
+
+CHAPTER 18
+Under 3
+
+Winning digits
+
+0
+1
+2
+
+Only three winning digits. Expect more variability in short samples.
+
+CHAPTER 19
+Under 2
+
+Winning digits
+
+0
+1
+
+A narrow winning set with lower probability and typically higher payout.
+
+CHAPTER 20
+Under 1
+
+Winning digit
+
+0
+
+Only one winning digit. Any apparent streaks or absences of 0 can occur naturally in random sequences.
+
+CHAPTER 21
+Observation Zones
+
+You may classify recent 100-tick observations like this:
+
+Winning Digits in Recent Sample	Interpretation
+48–52%	Balanced
+53–57%	Mild imbalance
+58–62%	Strong imbalance
+63%+	Extreme recent imbalance
+
+These are descriptive categories, not trading signals.

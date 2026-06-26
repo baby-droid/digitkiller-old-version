@@ -159,17 +159,15 @@ function DigitCircles({ digits, lastDigit }: { digits: number[]; lastDigit: numb
   );
 }
 
-/* ── AI Signal engine ────────────────────────────────────────────────────── */
+/* ── AI Signal engine — Even / Odd ──────────────────────────────────────── */
 type SignalResult = {
-  action: "BUY_ODD" | "BUY_EVEN" | "WAIT" | "WARN";
+  action: "BUY_ODD" | "BUY_EVEN" | "BUY_OVER" | "BUY_UNDER" | "WAIT" | "WARN";
   label: string;
   reason: string;
   accentColor: string;
 };
 
 function computeSignal(recent: number[], evenPct: number, oddPct: number): SignalResult {
-  const THRESH = 55;
-
   if (recent.length < 15) {
     return { action: "WAIT", label: "⏳ Collecting data…", reason: "Need at least 15 ticks", accentColor: "#6b7280" };
   }
@@ -177,11 +175,21 @@ function computeSignal(recent: number[], evenPct: number, oddPct: number): Signa
   const last30 = recent.slice(-30);
   const last10 = recent.slice(-10);
 
-  /* Build E/O string for pattern matching */
+  /* Build E/O string */
   const eoArr = last30.map(d => d % 2 === 0 ? "E" : "O");
   const eStr  = eoArr.join("");
 
-  /* ── Warning: Liquidity sweep ── 5+ consecutive same type then reversal */
+  /* Ch 11: Balanced zone 48–52% — no clear edge */
+  if (evenPct >= 48 && evenPct <= 52) {
+    return {
+      action: "WAIT",
+      label: "⏳ BALANCED ZONE — NO EDGE",
+      reason: `Even ${evenPct.toFixed(1)}% / Odd ${oddPct.toFixed(1)}% — market at 50/50, avoid trading (Ch 11)`,
+      accentColor: "#6b7280",
+    };
+  }
+
+  /* ── Warning: Liquidity sweep — 5+ consecutive then reversal */
   let tailStreak = 1;
   for (let k = eoArr.length - 2; k >= 0; k--) {
     if (eoArr[k] === eoArr[eoArr.length - 1]) tailStreak++;
@@ -198,13 +206,13 @@ function computeSignal(recent: number[], evenPct: number, oddPct: number): Signa
       return {
         action: "WARN",
         label: "⚠️ LIQUIDITY SWEEP — DO NOT TRADE",
-        reason: `${prevRun}× ${prevType === "E" ? "EVEN" : "ODD"} run then sudden reversal — wait for market to settle`,
+        reason: `${prevRun}× ${prevType === "E" ? "EVEN" : "ODD"} run then sudden reversal — wait for market to settle (Ch 5)`,
         accentColor: "#f97316",
       };
     }
   }
 
-  /* ── Warning: Imbalance / Manipulation ── recent 10 ticks one-sided ≥80% */
+  /* ── Warning: Extreme one-sided last 10 ticks ≥80% (Ch 6 manipulation) */
   const r10Even = last10.filter(d => d % 2 === 0).length;
   const r10EvenPct = (r10Even / last10.length) * 100;
   if (r10EvenPct >= 80 || r10EvenPct <= 20) {
@@ -212,13 +220,13 @@ function computeSignal(recent: number[], evenPct: number, oddPct: number): Signa
     const pct  = r10EvenPct >= 80 ? r10EvenPct : 100 - r10EvenPct;
     return {
       action: "WARN",
-      label: "⚠️ IMBALANCE / MANIPULATION — DO NOT TRADE",
-      reason: `${side} dominated last 10 ticks (${Math.round(pct)}%) — likely artificial push`,
+      label: "⚠️ EXTREME STREAK — DO NOT TRADE",
+      reason: `${side} dominated last 10 ticks (${Math.round(pct)}%) — natural streak or manipulation, wait (Ch 6)`,
       accentColor: "#ef4444",
     };
   }
 
-  /* ── Warning: FVG — rapid oscillation (EOEOEO or OEOEOE across last 8) */
+  /* ── Warning: FVG — rapid alternation EOEOEO */
   const last8 = eStr.slice(-8);
   let alternates = 0;
   for (let k = 1; k < last8.length; k++) {
@@ -228,51 +236,210 @@ function computeSignal(recent: number[], evenPct: number, oddPct: number): Signa
     return {
       action: "WARN",
       label: "⚠️ FAIR VALUE GAP — DO NOT TRADE",
-      reason: "Rapid alternation (EOEOEO pattern) — market indecision / manipulation",
+      reason: "Rapid even/odd alternation — digit imbalance / market indecision (Ch 4 / Ch 11)",
       accentColor: "#eab308",
     };
   }
 
-  /* ── Entry: BUY ODD — pattern OEE (1 odd then 2 evens) */
-  if (eStr.slice(-3) === "OEE" && oddPct > THRESH) {
+  /* ── Determine imbalance zone (Ch 7) */
+  const dominant    = evenPct > oddPct ? "EVEN" : "ODD";
+  const domPct      = Math.max(evenPct, oddPct);
+  const zone        = domPct >= 65 ? "EXTREME" : domPct >= 60 ? "STRONG" : domPct >= 55 ? "MODERATE" : null;
+
+  /* ── Entry: BUY ODD — pattern OEE (odd then 2 evens → odd pull-back) */
+  if (eStr.slice(-3) === "OEE" && oddPct > 55) {
     return {
       action: "BUY_ODD",
       label: "🎯 ENTER NOW — BUY ODD",
-      reason: `Pattern ODD → 2× EVEN  ·  Odd% ${oddPct.toFixed(1)}% > 55%`,
+      reason: `Pattern O→EE (odd absorption) · Odd ${oddPct.toFixed(1)}% ${zone ? `· ${zone} imbalance` : ""} (Ch 9/10)`,
       accentColor: "#ef4444",
     };
   }
 
-  /* ── Entry: BUY EVEN — pattern EOO (1 even then 2 odds) */
-  if (eStr.slice(-3) === "EOO" && evenPct > THRESH) {
+  /* ── Entry: BUY EVEN — pattern EOO */
+  if (eStr.slice(-3) === "EOO" && evenPct > 55) {
     return {
       action: "BUY_EVEN",
       label: "🎯 ENTER NOW — BUY EVEN",
-      reason: `Pattern EVEN → 2× ODD  ·  Even% ${evenPct.toFixed(1)}% > 55%`,
+      reason: `Pattern E→OO (even absorption) · Even ${evenPct.toFixed(1)}% ${zone ? `· ${zone} imbalance` : ""} (Ch 9/10)`,
       accentColor: "#22c55e",
     };
   }
 
-  /* ── Entry: BUY EVEN — 3 or 5 odds then 2–3 evens */
-  if (/O{3,5}E{2,3}$/.test(eStr) && evenPct > THRESH) {
+  /* ── Entry: BUY EVEN — 3–5 odds then 2–3 evens */
+  if (/O{3,5}E{2,3}$/.test(eStr) && evenPct > 55) {
     const oRun = (eStr.match(/O+(?=E{2,3}$)/) || [""])[0].length;
     const eRun = (eStr.match(/E{2,3}$/)       || [""])[0].length;
     return {
       action: "BUY_EVEN",
       label: "🎯 ENTER NOW — BUY EVEN",
-      reason: `Pattern ${oRun}× ODD → ${eRun}× EVEN  ·  Even% ${evenPct.toFixed(1)}% > 55%`,
+      reason: `Pattern ${oRun}× ODD → ${eRun}× EVEN · Even ${evenPct.toFixed(1)}% ${zone ? `· ${zone} zone` : ""} (Ch 10)`,
       accentColor: "#22c55e",
     };
   }
 
-  /* ── Entry: BUY ODD — 3 or 5 evens then 2–3 odds */
-  if (/E{3,5}O{2,3}$/.test(eStr) && oddPct > THRESH) {
+  /* ── Entry: BUY ODD — 3–5 evens then 2–3 odds */
+  if (/E{3,5}O{2,3}$/.test(eStr) && oddPct > 55) {
     const eRun = (eStr.match(/E+(?=O{2,3}$)/) || [""])[0].length;
     const oRun = (eStr.match(/O{2,3}$/)        || [""])[0].length;
     return {
       action: "BUY_ODD",
       label: "🎯 ENTER NOW — BUY ODD",
-      reason: `Pattern ${eRun}× EVEN → ${oRun}× ODD  ·  Odd% ${oddPct.toFixed(1)}% > 55%`,
+      reason: `Pattern ${eRun}× EVEN → ${oRun}× ODD · Odd ${oddPct.toFixed(1)}% ${zone ? `· ${zone} zone` : ""} (Ch 10)`,
+      accentColor: "#ef4444",
+    };
+  }
+
+  /* ── Imbalance-only signal (no pattern but strong zone) */
+  if (zone === "STRONG" || zone === "EXTREME") {
+    const buyAction = dominant === "ODD" ? "BUY_ODD" : "BUY_EVEN";
+    return {
+      action: buyAction,
+      label: `🎯 ${zone} SIGNAL — BUY ${dominant}`,
+      reason: `${dominant} at ${domPct.toFixed(1)}% (${zone} imbalance zone, Ch 7) — no pattern yet, watch for entry`,
+      accentColor: dominant === "ODD" ? "#ef4444" : "#22c55e",
+    };
+  }
+
+  return {
+    action: "WAIT",
+    label: "⏳ Scanning for entry…",
+    reason: `Even ${evenPct.toFixed(1)}% · Odd ${oddPct.toFixed(1)}% — moderate range, wait for clear pattern (Ch 12)`,
+    accentColor: "#6b7280",
+  };
+}
+
+/* ── AI Signal engine — Over / Under ────────────────────────────────────── */
+type OUSignalResult = {
+  action: "BUY_OVER" | "BUY_UNDER" | "WAIT" | "WARN";
+  label: string;
+  reason: string;
+  accentColor: string;
+};
+
+function computeOUSignal(digits: number[], threshold: number): OUSignalResult {
+  if (digits.length < 15) {
+    return { action: "WAIT", label: "⏳ Collecting data…", reason: "Need at least 15 ticks", accentColor: "#6b7280" };
+  }
+
+  const total       = digits.length;
+  const overCount   = digits.filter(d => d > threshold).length;
+  const underCount  = digits.filter(d => d < threshold).length;
+  const overPct     = (overCount / total) * 100;
+  const underPct    = (underCount / total) * 100;
+
+  const last20  = digits.slice(-20);
+  const last10  = digits.slice(-10);
+  const last5   = digits.slice(-5);
+
+  /* Ch 21: Balanced zone 48–52% → no edge */
+  const winOverPct  = (last20.filter(d => d > threshold).length / last20.length) * 100;
+  const winUnderPct = (last20.filter(d => d < threshold).length / last20.length) * 100;
+  if (winOverPct >= 48 && winOverPct <= 52) {
+    return {
+      action: "WAIT",
+      label: "⏳ BALANCED — NO EDGE",
+      reason: `Over-${threshold}: ${overPct.toFixed(1)}% · Under-${threshold}: ${underPct.toFixed(1)}% — near 50/50, avoid (Ch 21)`,
+      accentColor: "#6b7280",
+    };
+  }
+
+  /* ── Warning: extreme recent streak in last 10 */
+  const rec10Over  = last10.filter(d => d > threshold).length / last10.length * 100;
+  const rec10Under = 100 - rec10Over;
+  if (rec10Over >= 85 || rec10Under >= 85) {
+    const side = rec10Over >= 85 ? "OVER" : "UNDER";
+    const pct  = rec10Over >= 85 ? rec10Over : rec10Under;
+    return {
+      action: "WARN",
+      label: `⚠️ EXTREME ${side} STREAK — DO NOT TRADE`,
+      reason: `${Math.round(pct)}% of last 10 ticks hit ${side}-${threshold} — possible streak or manipulation`,
+      accentColor: "#f97316",
+    };
+  }
+
+  /* ── Warning: rapid alternation (FVG) */
+  const last10Dirs = last10.map(d => d > threshold ? "O" : d < threshold ? "U" : "=");
+  let alts = 0;
+  for (let k = 1; k < last10Dirs.length; k++) {
+    if (last10Dirs[k] !== "=" && last10Dirs[k - 1] !== "=" && last10Dirs[k] !== last10Dirs[k - 1]) alts++;
+  }
+  if (alts >= 8) {
+    return {
+      action: "WARN",
+      label: "⚠️ FAIR VALUE GAP — DO NOT TRADE",
+      reason: `Market alternating rapidly over/under ${threshold} — digit imbalance, avoid entry`,
+      accentColor: "#eab308",
+    };
+  }
+
+  /* ── Pattern 1: Triple same digit (7,7,7 → BUY UNDER 7; 2,2,2 → BUY OVER 2) */
+  const t3 = last5.slice(-3);
+  if (t3[0] === t3[1] && t3[1] === t3[2]) {
+    const d = t3[2];
+    if (d >= threshold) {
+      return {
+        action: "BUY_UNDER",
+        label: `🎯 ENTER NOW — BUY UNDER ${threshold}`,
+        reason: `Pattern: ${d},${d},${d} — digit touched ${threshold > 0 ? "at/above" : "at"} barrier 3× · reversal expected · Under ${underPct.toFixed(1)}%`,
+        accentColor: "#3b82f6",
+      };
+    }
+    if (d <= threshold) {
+      return {
+        action: "BUY_OVER",
+        label: `🎯 ENTER NOW — BUY OVER ${threshold}`,
+        reason: `Pattern: ${d},${d},${d} — digit touched ${threshold < 9 ? "at/below" : "at"} barrier 3× · reversal expected · Over ${overPct.toFixed(1)}%`,
+        accentColor: "#ef4444",
+      };
+    }
+  }
+
+  /* ── Pattern 2: Conservative ascending cluster → BUY UNDER threshold
+     Example: 7,8,9,9 means digits clustering high — reversal under threshold */
+  const last4 = last5.slice(-4);
+  const ascStep    = last4[1] >= last4[0] && last4[2] >= last4[1];
+  const tailRepeat = last4[3] === last4[2];
+  const tailHigh   = last4[2] >= threshold && last4[3] >= threshold;
+  if (ascStep && tailRepeat && tailHigh && underPct > 40) {
+    return {
+      action: "BUY_UNDER",
+      label: `🎯 ENTER NOW — BUY UNDER ${threshold}`,
+      reason: `Pattern: ${last4.join(",")} — ascending cluster high, conservative touch · Under ${underPct.toFixed(1)}%`,
+      accentColor: "#3b82f6",
+    };
+  }
+
+  /* ── Pattern 3: Conservative descending cluster → BUY OVER threshold
+     Example: 2,1,0,0 or 0,1,2,2 means digits clustering low — reversal over threshold */
+  const descStep   = last4[1] <= last4[0] && last4[2] <= last4[1];
+  const tailLow    = last4[2] <= threshold && last4[3] <= threshold;
+  if (descStep && tailRepeat && tailLow && overPct > 40) {
+    return {
+      action: "BUY_OVER",
+      label: `🎯 ENTER NOW — BUY OVER ${threshold}`,
+      reason: `Pattern: ${last4.join(",")} — descending cluster low, conservative touch · Over ${overPct.toFixed(1)}%`,
+      accentColor: "#ef4444",
+    };
+  }
+
+  /* ── Imbalance zone signals (Ch 21) — 58–62% strong, 63%+ extreme */
+  const zone = winUnderPct >= 63 ? "EXTREME" : winUnderPct >= 58 ? "STRONG" : winUnderPct >= 53 ? "MILD" : null;
+  const ozne = winOverPct  >= 63 ? "EXTREME" : winOverPct  >= 58 ? "STRONG" : winOverPct  >= 53 ? "MILD" : null;
+
+  if (underPct > 57) {
+    return {
+      action: "BUY_UNDER",
+      label: `🎯 SIGNAL — BUY UNDER ${threshold}`,
+      reason: `Under-${threshold}: ${underPct.toFixed(1)}% ${zone ? `(${zone} imbalance)` : ""} — statistical edge for under entry`,
+      accentColor: "#3b82f6",
+    };
+  }
+  if (overPct > 57) {
+    return {
+      action: "BUY_OVER",
+      label: `🎯 SIGNAL — BUY OVER ${threshold}`,
+      reason: `Over-${threshold}: ${overPct.toFixed(1)}% ${ozne ? `(${ozne} imbalance)` : ""} — statistical edge for over entry`,
       accentColor: "#ef4444",
     };
   }
@@ -280,9 +447,76 @@ function computeSignal(recent: number[], evenPct: number, oddPct: number): Signa
   return {
     action: "WAIT",
     label: "⏳ Scanning for entry…",
-    reason: "No valid pattern detected — keep watching",
+    reason: `Over-${threshold}: ${overPct.toFixed(1)}% · Under-${threshold}: ${underPct.toFixed(1)}% — no clear edge yet`,
     accentColor: "#6b7280",
   };
+}
+
+/* ── Over/Under AI Signal Panel ─────────────────────────────────────────── */
+function OUSignalPanel({ digits, threshold }: { digits: number[]; threshold: number }) {
+  const sig    = computeOUSignal(digits, threshold);
+  const isBuy  = sig.action === "BUY_OVER" || sig.action === "BUY_UNDER";
+  const isWarn = sig.action === "WARN";
+
+  return (
+    <div
+      className="rounded-xl border p-4 mt-4"
+      style={{
+        background: isBuy
+          ? `linear-gradient(135deg, rgba(0,0,0,0.75) 0%, ${sig.accentColor}20 100%)`
+          : isWarn
+          ? "linear-gradient(135deg, rgba(0,0,0,0.7) 0%, rgba(239,68,68,0.12) 100%)"
+          : "rgba(0,0,0,0.3)",
+        borderColor: isBuy || isWarn ? sig.accentColor : "#374151",
+        boxShadow: isBuy ? `0 0 20px ${sig.accentColor}55` : isWarn ? "0 0 14px rgba(239,68,68,0.3)" : "none",
+      }}
+    >
+      <div className="flex items-center gap-2 mb-2">
+        <div
+          className="w-2 h-2 rounded-full"
+          style={{
+            backgroundColor: sig.accentColor,
+            animation: isBuy ? "pulse 1s ease-in-out infinite" : "none",
+          }}
+        />
+        <span className="text-[10px] font-bold uppercase tracking-widest" style={{ color: sig.accentColor }}>
+          AI Over/Under Signal
+        </span>
+        <span className="text-[10px] text-muted-foreground ml-auto">Threshold: {threshold}</span>
+      </div>
+      <div
+        className="text-lg font-black tracking-tight mb-1"
+        style={{ color: isBuy || isWarn ? sig.accentColor : "#9ca3af" }}
+      >
+        {sig.label}
+      </div>
+      <div className="text-xs" style={{ color: "#9ca3af" }}>{sig.reason}</div>
+
+      {/* Last 15 tick mini-strip */}
+      {digits.length >= 5 && (
+        <div className="flex flex-wrap gap-1 mt-3">
+          {digits.slice(-15).map((d, i) => {
+            const isOver  = d > threshold;
+            const isUnder = d < threshold;
+            return (
+              <div
+                key={i}
+                className="w-6 h-6 rounded-full flex items-center justify-center text-[9px] font-black border"
+                style={{
+                  backgroundColor: isUnder ? "#1e3a8a" : isOver ? "#991b1b" : "#374151",
+                  borderColor:     isUnder ? "#3b82f6" : isOver ? "#ef4444" : "#6b7280",
+                  color: "#fff",
+                  opacity: i < 10 ? 0.55 : 1,
+                }}
+              >
+                {isUnder ? "U" : isOver ? "O" : "="}
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
 }
 
 function AISignalPanel({ recent, evenPct, oddPct }: { recent: number[]; evenPct: number; oddPct: number }) {
@@ -719,7 +953,7 @@ export default function WideEye() {
               onChange={(e) => setOverUnderThreshold(+e.target.value)}
               className="bg-background border border-border text-foreground rounded px-2 py-1 text-xs font-mono focus:outline-none focus:border-primary"
             >
-              {[1, 2, 3, 4, 5, 6, 7, 8].map((n) => (
+              {[0, 1, 2, 3, 4, 5, 6, 7, 8, 9].map((n) => (
                 <option key={n} value={n}>{n}</option>
               ))}
             </select>
@@ -829,6 +1063,9 @@ export default function WideEye() {
               })}
             </div>
           </div>
+
+          {/* ── Over/Under AI Signal Panel ── */}
+          <OUSignalPanel digits={displayDigits} threshold={overUnderThreshold} />
         </CardContent>
       </Card>
 
