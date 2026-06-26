@@ -85,28 +85,40 @@ export function useDerivWebSocket(symbol: string) {
   const wsRef   = useRef<WebSocket | null>(null);
   const pingRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const pipRef  = useRef<number>(4);
+  /* generation counter — incremented on every new connection so stale
+     messages from a closed socket are silently discarded */
+  const genRef  = useRef<number>(0);
 
   const clearPing = () => {
     if (pingRef.current) { clearInterval(pingRef.current); pingRef.current = null; }
   };
 
   const connect = useCallback(() => {
+    /* Tear down any existing socket completely */
     if (wsRef.current) {
-      wsRef.current.onclose = null;
-      wsRef.current.onerror = null;
+      wsRef.current.onopen    = null;
+      wsRef.current.onclose   = null;
+      wsRef.current.onerror   = null;
       wsRef.current.onmessage = null;
       wsRef.current.close();
       wsRef.current = null;
     }
     clearPing();
 
+    /* Bump generation so any in-flight messages from old socket are ignored */
+    const myGen = ++genRef.current;
+
+    /* Reset state immediately so UI shows clean slate */
+    setDigits([]);
+    setHistoryLoaded(false);
+    setIsConnected(false);
+
     const ws = new WebSocket(WS_URL);
     wsRef.current = ws;
 
     ws.onopen = () => {
+      if (genRef.current !== myGen) { ws.close(); return; }
       setIsConnected(true);
-      setDigits([]);
-      setHistoryLoaded(false);
 
       pingRef.current = setInterval(() => {
         if (ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify({ ping: 1 }));
@@ -122,6 +134,9 @@ export function useDerivWebSocket(symbol: string) {
     };
 
     ws.onmessage = (event: MessageEvent) => {
+      /* Discard messages that belong to a previous market */
+      if (genRef.current !== myGen) return;
+
       const data = JSON.parse(event.data as string);
 
       if (data.msg_type === "history" && data.history) {
@@ -150,6 +165,7 @@ export function useDerivWebSocket(symbol: string) {
     };
 
     ws.onclose = () => {
+      if (genRef.current !== myGen) return;
       setIsConnected(false);
       clearPing();
       setTimeout(connect, 3000);
@@ -164,9 +180,14 @@ export function useDerivWebSocket(symbol: string) {
   useEffect(() => {
     connect();
     return () => {
+      /* Invalidate current generation so all handlers become no-ops */
+      genRef.current++;
       clearPing();
       if (wsRef.current) {
-        wsRef.current.onclose = null;
+        wsRef.current.onopen    = null;
+        wsRef.current.onclose   = null;
+        wsRef.current.onerror   = null;
+        wsRef.current.onmessage = null;
         wsRef.current.close();
         wsRef.current = null;
       }

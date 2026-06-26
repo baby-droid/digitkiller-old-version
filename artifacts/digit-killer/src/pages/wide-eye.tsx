@@ -12,7 +12,17 @@ import { Eye, Activity } from "lucide-react";
 /* ── page accent colour ─────────────────────────────────────────────────── */
 const ACCENT = "#16a34a"; // dark green
 
-/* ── per-digit colour palette ───────────────────────────────────────────── */
+/* ── per-digit identity colours (spec) ─────────────────────────────────── */
+// Digits with a specific identity color; others are white/normal
+const DIGIT_IDENTITY: Record<number, { bg: string; text: string }> = {
+  3: { bg: "#D88B1F", text: "#fff" }, // orange
+  6: { bg: "#42B883", text: "#fff" }, // green
+  7: { bg: "#E24A43", text: "#fff" }, // red
+  8: { bg: "#42B883", text: "#fff" }, // green (same as 6 — by design)
+  9: { bg: "#4E7CF5", text: "#fff" }, // blue
+};
+
+/* ── per-digit colour palette (used for triangle track) ─────────────────── */
 const D_COLORS = [
   { bg: "#4f46e5", border: "#6366f1", text: "#fff" },
   { bg: "#2563eb", border: "#3b82f6", text: "#fff" },
@@ -26,14 +36,6 @@ const D_COLORS = [
   { bg: "#9333ea", border: "#a855f7", text: "#fff" },
 ];
 
-/* ── rank colours for bars ──────────────────────────────────────────────── */
-const BAR_COLOR = (rank: number) =>
-  rank === 0 ? "#22c55e"  // green  – highest
-  : rank === 1 ? "#3b82f6" // blue   – 2nd highest
-  : rank === 8 ? "#eab308" // yellow – 2nd lowest
-  : rank === 9 ? "#ef4444" // red    – lowest
-  : "rgba(255,255,255,0.18)";
-
 /* ── Digit Circles ──────────────────────────────────────────────────────── */
 function DigitCircles({ digits, lastDigit }: { digits: number[]; lastDigit: number | null }) {
   const total  = digits.length || 1;
@@ -41,49 +43,22 @@ function DigitCircles({ digits, lastDigit }: { digits: number[]; lastDigit: numb
   digits.forEach((d) => counts[d]++);
   const pcts = counts.map((c) => (c / total) * 100);
 
-  /* rank 0 = highest freq, rank 9 = lowest */
-  const ranked = [...pcts]
-    .map((p, i) => ({ p, i }))
-    .sort((a, b) => b.p - a.p)
-    .map((o, rank) => ({ ...o, rank }));
-  const rankOf: Record<number, number> = {};
-  ranked.forEach(({ i, rank }) => { rankOf[i] = rank; });
-
   return (
-    <div className="w-full">
-      <div className="flex justify-between items-end gap-0.5">
+    <div className="w-full" style={{ marginTop: 35, marginBottom: 25 }}>
+      <div className="flex justify-between items-end" style={{ gap: 28 }}>
         {Array.from({ length: 10 }, (_, i) => {
           const isCurrent = lastDigit === i;
-          const rank      = rankOf[i];
-          const sz        = Math.round(Math.max(46, Math.min(72, 50 + (pcts[i] - 10) * 2.8)));
+          const identity  = DIGIT_IDENTITY[i];
 
-          let bgColor     = "transparent";
-          let borderColor = "rgba(255,255,255,0.15)";
-          let textColor   = "rgba(255,255,255,0.55)";
-          let glow        = "none";
-          let fw          = "600";
-
-          if (isCurrent) {
-            bgColor = "#00d1d1"; borderColor = "#00d1d1";
-            textColor = "#000"; glow = "0 0 20px rgba(0,209,209,0.8)"; fw = "900";
-          } else if (rank === 0) {
-            bgColor = "#15803d"; borderColor = "#22c55e";
-            textColor = "#fff"; glow = "0 0 12px rgba(34,197,94,0.5)"; fw = "900";
-          } else if (rank === 1) {
-            bgColor = "#1e3a8a"; borderColor = "#3b82f6";
-            textColor = "#fff"; glow = "0 0 10px rgba(59,130,246,0.4)"; fw = "800";
-          } else if (rank === 8) {
-            bgColor = "#713f12"; borderColor = "#eab308";
-            textColor = "#fff"; glow = "0 0 10px rgba(234,179,8,0.35)"; fw = "700";
-          } else if (rank === 9) {
-            bgColor = "#7f1d1d"; borderColor = "#ef4444";
-            textColor = "#fff"; glow = "0 0 10px rgba(220,38,38,0.35)"; fw = "700";
-          }
+          /* colours — identity overrides normal; current gets blue ring wrapper */
+          const bgColor   = identity ? identity.bg : "#FFFFFF";
+          const textColor = identity ? identity.text : "#1F2937";
+          const shadow    = "0 2px 6px rgba(0,0,0,0.10)";
 
           return (
-            <div key={i} className="flex flex-col items-center gap-0.5 flex-1">
+            <div key={i} className="flex flex-col items-center flex-1" style={{ gap: 6 }}>
               {/* ── Purple triangle cursor (only on current digit) ── */}
-              <div className="h-5 flex items-end justify-center">
+              <div className="flex items-end justify-center" style={{ height: 20 }}>
                 {isCurrent && (
                   <div
                     style={{
@@ -92,58 +67,81 @@ function DigitCircles({ digits, lastDigit }: { digits: number[]; lastDigit: numb
                       borderRight: "7px solid transparent",
                       borderTop: "12px solid #a855f7",
                       filter: "drop-shadow(0 0 5px rgba(168,85,247,0.9))",
-                      transition: "all 0.3s ease",
                     }}
                   />
                 )}
               </div>
 
-              {/* ── Circle ── */}
-              <div
-                className="rounded-full flex items-center justify-center border-2 select-none"
-                style={{
-                  width: sz, height: sz,
-                  backgroundColor: bgColor,
-                  borderColor,
-                  color: textColor,
-                  boxShadow: glow,
-                  fontSize: sz >= 52 ? 19 : sz >= 44 ? 16 : 13,
-                  fontWeight: fw,
-                  transition: "all 0.3s ease",
-                }}
-              >
-                {i}
-              </div>
+              {/* ── Current digit gets 84px outer ring ── */}
+              {isCurrent ? (
+                <div
+                  className="rounded-full flex items-center justify-center select-none"
+                  style={{
+                    width: 84, height: 84,
+                    border: "3px solid #4C7DFF",
+                    borderRadius: "50%",
+                    padding: 4,
+                    boxShadow: shadow,
+                  }}
+                >
+                  <div
+                    className="rounded-full flex items-center justify-center w-full h-full"
+                    style={{
+                      backgroundColor: bgColor,
+                      border: "2px solid #D9D9D9",
+                      flexDirection: "column",
+                    }}
+                  >
+                    <span style={{ fontSize: 22, fontWeight: 600, color: textColor, lineHeight: 1 }}>{i}</span>
+                  </div>
+                </div>
+              ) : (
+                <div
+                  className="rounded-full flex items-center justify-center select-none"
+                  style={{
+                    width: 72, height: 72,
+                    backgroundColor: bgColor,
+                    border: "2px solid #D9D9D9",
+                    flexDirection: "column",
+                    boxShadow: shadow,
+                  }}
+                >
+                  <span style={{ fontSize: 22, fontWeight: 600, color: textColor, lineHeight: 1 }}>{i}</span>
+                </div>
+              )}
 
               {/* ── Pct label ── */}
               <span
-                className="font-mono text-center leading-none"
+                className="text-center leading-none"
                 style={{
-                  fontSize: 9,
-                  color: isCurrent ? "#00d1d1" : rank === 0 ? "#4ade80" : rank === 9 ? "#f87171" : "rgba(255,255,255,0.4)",
-                  fontWeight: isCurrent || rank <= 1 || rank >= 8 ? 700 : 400,
+                  fontSize: 14,
+                  fontWeight: 500,
+                  color: "#555",
+                  fontFamily: "Inter, sans-serif",
                 }}
               >
                 {pcts[i].toFixed(1)}%
               </span>
-
             </div>
           );
         })}
       </div>
 
       {/* legend */}
-      <div className="flex flex-wrap gap-3 mt-4 text-[9px] text-muted-foreground">
+      <div className="flex flex-wrap gap-3 mt-4 text-[10px] text-muted-foreground">
         {[
-          { color: "#00d1d1", label: "current" },
-          { color: "#22c55e", label: "highest" },
-          { color: "#3b82f6", label: "2nd highest" },
-          { color: "rgba(255,255,255,0.2)", label: "normal" },
-          { color: "#eab308", label: "2nd lowest" },
-          { color: "#ef4444", label: "lowest" },
-        ].map(({ color, label }) => (
+          { color: "#4C7DFF", label: "current (blue ring)" },
+          { color: "#D88B1F", label: "digit 3" },
+          { color: "#42B883", label: "digit 6 & 8" },
+          { color: "#E24A43", label: "digit 7" },
+          { color: "#4E7CF5", label: "digit 9" },
+          { color: "#FFFFFF", label: "others", border: "#D9D9D9" },
+        ].map(({ color, label, border }) => (
           <span key={label} className="flex items-center gap-1.5">
-            <span className="inline-block w-3 h-3 rounded-full border" style={{ backgroundColor: color, borderColor: color }} />
+            <span
+              className="inline-block w-3 h-3 rounded-full"
+              style={{ backgroundColor: color, border: `1.5px solid ${border ?? color}` }}
+            />
             {label}
           </span>
         ))}
