@@ -1,8 +1,8 @@
 import { createContext, useContext, useState, useEffect, useCallback, ReactNode } from "react";
 
 const ADMIN_PIN          = "AHMED2005";
-const SESSION_KEY        = "dk_session_v2";
-const SESSION_MAX_MS     = 14 * 60 * 60 * 1000; // 14 hours
+const SESSION_KEY        = "dk_session_v3"; // bumped to invalidate old 14h sessions
+const SESSION_MAX_MS     = 30 * 24 * 60 * 60 * 1000; // 30 days
 const API_BASE           = "/api";
 
 export type UserRecord = {
@@ -39,11 +39,11 @@ const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 function readSession(): Session | null {
   try {
-    const raw = sessionStorage.getItem(SESSION_KEY);
+    const raw = localStorage.getItem(SESSION_KEY);
     if (!raw) return null;
     const stored: StoredSession = JSON.parse(raw);
     if (Date.now() - stored.ts > SESSION_MAX_MS) {
-      sessionStorage.removeItem(SESSION_KEY);
+      localStorage.removeItem(SESSION_KEY);
       return null;
     }
     return stored.session;
@@ -51,8 +51,8 @@ function readSession(): Session | null {
 }
 
 function writeSession(s: Session | null) {
-  if (s) sessionStorage.setItem(SESSION_KEY, JSON.stringify({ session: s, ts: Date.now() }));
-  else sessionStorage.removeItem(SESSION_KEY);
+  if (s) localStorage.setItem(SESSION_KEY, JSON.stringify({ session: s, ts: Date.now() }));
+  else localStorage.removeItem(SESSION_KEY);
 }
 
 function generateLocalId(): string {

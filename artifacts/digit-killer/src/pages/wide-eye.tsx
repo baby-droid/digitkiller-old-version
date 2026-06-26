@@ -12,14 +12,12 @@ import { Eye, Activity } from "lucide-react";
 /* ── page accent colour ─────────────────────────────────────────────────── */
 const ACCENT = "#16a34a"; // dark green
 
-/* ── per-digit identity colours (spec) ─────────────────────────────────── */
-// Digits with a specific identity color; others are white/normal
-const DIGIT_IDENTITY: Record<number, { bg: string; text: string }> = {
-  3: { bg: "#D88B1F", text: "#fff" }, // orange
-  6: { bg: "#42B883", text: "#fff" }, // green
-  7: { bg: "#E24A43", text: "#fff" }, // red
-  8: { bg: "#42B883", text: "#fff" }, // green (same as 6 — by design)
-  9: { bg: "#4E7CF5", text: "#fff" }, // blue
+/* ── rank colour palette ────────────────────────────────────────────────── */
+const RANK_COLORS = {
+  highest:    { bg: "#15803d", border: "#22c55e", text: "#fff", label: "highest %",    glow: "0 0 12px rgba(34,197,94,0.55)" },
+  second_high:{ bg: "#1e3a8a", border: "#3b82f6", text: "#fff", label: "2nd highest %", glow: "0 0 10px rgba(59,130,246,0.45)" },
+  second_low: { bg: "#713f12", border: "#eab308", text: "#fff", label: "2nd lowest %",  glow: "0 0 10px rgba(234,179,8,0.4)" },
+  lowest:     { bg: "#7f1d1d", border: "#ef4444", text: "#fff", label: "lowest %",      glow: "0 0 10px rgba(239,68,68,0.45)" },
 };
 
 /* ── per-digit colour palette (used for triangle track) ─────────────────── */
@@ -43,21 +41,39 @@ function DigitCircles({ digits, lastDigit }: { digits: number[]; lastDigit: numb
   digits.forEach((d) => counts[d]++);
   const pcts = counts.map((c) => (c / total) * 100);
 
+  /* Unique sorted pct values (descending) — ties get the same rank color */
+  const sortedUnique = [...new Set(pcts)].sort((a, b) => b - a);
+  const n = sortedUnique.length;
+  const highestVal     = n >= 1 ? sortedUnique[0]     : null;
+  const lowestVal      = n >= 2 ? sortedUnique[n - 1] : null;
+  const secondHighVal  = n >= 3 ? sortedUnique[1]     : null;
+  const secondLowVal   = n >= 4 ? sortedUnique[n - 2] : null;
+
+  function getRankStyle(i: number) {
+    const p = pcts[i];
+    if (highestVal !== null    && p === highestVal)    return RANK_COLORS.highest;
+    if (lowestVal !== null     && p === lowestVal)     return RANK_COLORS.lowest;
+    if (secondHighVal !== null && p === secondHighVal) return RANK_COLORS.second_high;
+    if (secondLowVal !== null  && p === secondLowVal)  return RANK_COLORS.second_low;
+    return null;
+  }
+
   return (
     <div className="w-full" style={{ marginTop: 35, marginBottom: 25 }}>
       <div className="flex justify-between items-end" style={{ gap: 28 }}>
         {Array.from({ length: 10 }, (_, i) => {
           const isCurrent = lastDigit === i;
-          const identity  = DIGIT_IDENTITY[i];
-
-          /* colours — identity overrides normal; current gets blue ring wrapper */
-          const bgColor   = identity ? identity.bg : "#FFFFFF";
-          const textColor = identity ? identity.text : "#1F2937";
-          const shadow    = "0 2px 6px rgba(0,0,0,0.10)";
+          const rank      = getRankStyle(i);
+          const bgColor   = rank ? rank.bg   : "#FFFFFF";
+          const textColor = rank ? rank.text : "#1F2937";
+          const border    = rank ? `2px solid ${rank.border}` : "2px solid #D9D9D9";
+          const shadow    = rank
+            ? rank.glow
+            : "0 2px 6px rgba(0,0,0,0.10)";
 
           return (
             <div key={i} className="flex flex-col items-center flex-1" style={{ gap: 6 }}>
-              {/* ── Purple triangle cursor (only on current digit) ── */}
+              {/* ── Purple triangle cursor (current digit only) ── */}
               <div className="flex items-end justify-center" style={{ height: 20 }}>
                 {isCurrent && (
                   <div
@@ -72,7 +88,7 @@ function DigitCircles({ digits, lastDigit }: { digits: number[]; lastDigit: numb
                 )}
               </div>
 
-              {/* ── Current digit gets 84px outer ring ── */}
+              {/* ── Current digit → 84px blue outer ring wrapper ── */}
               {isCurrent ? (
                 <div
                   className="rounded-full flex items-center justify-center select-none"
@@ -86,11 +102,7 @@ function DigitCircles({ digits, lastDigit }: { digits: number[]; lastDigit: numb
                 >
                   <div
                     className="rounded-full flex items-center justify-center w-full h-full"
-                    style={{
-                      backgroundColor: bgColor,
-                      border: "2px solid #D9D9D9",
-                      flexDirection: "column",
-                    }}
+                    style={{ backgroundColor: bgColor, border, flexDirection: "column" }}
                   >
                     <span style={{ fontSize: 22, fontWeight: 600, color: textColor, lineHeight: 1 }}>{i}</span>
                   </div>
@@ -101,7 +113,7 @@ function DigitCircles({ digits, lastDigit }: { digits: number[]; lastDigit: numb
                   style={{
                     width: 72, height: 72,
                     backgroundColor: bgColor,
-                    border: "2px solid #D9D9D9",
+                    border,
                     flexDirection: "column",
                     boxShadow: shadow,
                   }}
@@ -110,13 +122,12 @@ function DigitCircles({ digits, lastDigit }: { digits: number[]; lastDigit: numb
                 </div>
               )}
 
-              {/* ── Pct label ── */}
+              {/* ── Percentage label ── */}
               <span
                 className="text-center leading-none"
                 style={{
-                  fontSize: 14,
-                  fontWeight: 500,
-                  color: "#555",
+                  fontSize: 13, fontWeight: 600,
+                  color: rank ? rank.border : "#555",
                   fontFamily: "Inter, sans-serif",
                 }}
               >
@@ -129,23 +140,218 @@ function DigitCircles({ digits, lastDigit }: { digits: number[]; lastDigit: numb
 
       {/* legend */}
       <div className="flex flex-wrap gap-3 mt-4 text-[10px] text-muted-foreground">
-        {[
-          { color: "#4C7DFF", label: "current (blue ring)" },
-          { color: "#D88B1F", label: "digit 3" },
-          { color: "#42B883", label: "digit 6 & 8" },
-          { color: "#E24A43", label: "digit 7" },
-          { color: "#4E7CF5", label: "digit 9" },
-          { color: "#FFFFFF", label: "others", border: "#D9D9D9" },
-        ].map(({ color, label, border }) => (
-          <span key={label} className="flex items-center gap-1.5">
-            <span
-              className="inline-block w-3 h-3 rounded-full"
-              style={{ backgroundColor: color, border: `1.5px solid ${border ?? color}` }}
-            />
-            {label}
+        <span className="flex items-center gap-1.5">
+          <span className="inline-block w-3 h-3 rounded-full border-2" style={{ border: "2px solid #4C7DFF" }} />
+          current digit
+        </span>
+        {Object.entries(RANK_COLORS).map(([, c]) => (
+          <span key={c.label} className="flex items-center gap-1.5">
+            <span className="inline-block w-3 h-3 rounded-full" style={{ backgroundColor: c.bg, border: `1.5px solid ${c.border}` }} />
+            {c.label}
           </span>
         ))}
+        <span className="flex items-center gap-1.5">
+          <span className="inline-block w-3 h-3 rounded-full" style={{ backgroundColor: "#fff", border: "1.5px solid #D9D9D9" }} />
+          normal
+        </span>
       </div>
+    </div>
+  );
+}
+
+/* ── AI Signal engine ────────────────────────────────────────────────────── */
+type SignalResult = {
+  action: "BUY_ODD" | "BUY_EVEN" | "WAIT" | "WARN";
+  label: string;
+  reason: string;
+  accentColor: string;
+};
+
+function computeSignal(recent: number[], evenPct: number, oddPct: number): SignalResult {
+  const THRESH = 55;
+
+  if (recent.length < 15) {
+    return { action: "WAIT", label: "⏳ Collecting data…", reason: "Need at least 15 ticks", accentColor: "#6b7280" };
+  }
+
+  const last30 = recent.slice(-30);
+  const last10 = recent.slice(-10);
+
+  /* Build E/O string for pattern matching */
+  const eoArr = last30.map(d => d % 2 === 0 ? "E" : "O");
+  const eStr  = eoArr.join("");
+
+  /* ── Warning: Liquidity sweep ── 5+ consecutive same type then reversal */
+  let tailStreak = 1;
+  for (let k = eoArr.length - 2; k >= 0; k--) {
+    if (eoArr[k] === eoArr[eoArr.length - 1]) tailStreak++;
+    else break;
+  }
+  const beforeTail = eoArr.length - tailStreak - 1;
+  if (beforeTail >= 0) {
+    let prevRun = 0;
+    const prevType = eoArr[beforeTail];
+    for (let k = beforeTail; k >= 0; k--) {
+      if (eoArr[k] === prevType) prevRun++; else break;
+    }
+    if (prevRun >= 5 && tailStreak >= 2) {
+      return {
+        action: "WARN",
+        label: "⚠️ LIQUIDITY SWEEP — DO NOT TRADE",
+        reason: `${prevRun}× ${prevType === "E" ? "EVEN" : "ODD"} run then sudden reversal — wait for market to settle`,
+        accentColor: "#f97316",
+      };
+    }
+  }
+
+  /* ── Warning: Imbalance / Manipulation ── recent 10 ticks one-sided ≥80% */
+  const r10Even = last10.filter(d => d % 2 === 0).length;
+  const r10EvenPct = (r10Even / last10.length) * 100;
+  if (r10EvenPct >= 80 || r10EvenPct <= 20) {
+    const side = r10EvenPct >= 80 ? "EVEN" : "ODD";
+    const pct  = r10EvenPct >= 80 ? r10EvenPct : 100 - r10EvenPct;
+    return {
+      action: "WARN",
+      label: "⚠️ IMBALANCE / MANIPULATION — DO NOT TRADE",
+      reason: `${side} dominated last 10 ticks (${Math.round(pct)}%) — likely artificial push`,
+      accentColor: "#ef4444",
+    };
+  }
+
+  /* ── Warning: FVG — rapid oscillation (EOEOEO or OEOEOE across last 8) */
+  const last8 = eStr.slice(-8);
+  let alternates = 0;
+  for (let k = 1; k < last8.length; k++) {
+    if (last8[k] !== last8[k - 1]) alternates++;
+  }
+  if (alternates >= 7) {
+    return {
+      action: "WARN",
+      label: "⚠️ FAIR VALUE GAP — DO NOT TRADE",
+      reason: "Rapid alternation (EOEOEO pattern) — market indecision / manipulation",
+      accentColor: "#eab308",
+    };
+  }
+
+  /* ── Entry: BUY ODD — pattern OEE (1 odd then 2 evens) */
+  if (eStr.slice(-3) === "OEE" && oddPct > THRESH) {
+    return {
+      action: "BUY_ODD",
+      label: "🎯 ENTER NOW — BUY ODD",
+      reason: `Pattern ODD → 2× EVEN  ·  Odd% ${oddPct.toFixed(1)}% > 55%`,
+      accentColor: "#ef4444",
+    };
+  }
+
+  /* ── Entry: BUY EVEN — pattern EOO (1 even then 2 odds) */
+  if (eStr.slice(-3) === "EOO" && evenPct > THRESH) {
+    return {
+      action: "BUY_EVEN",
+      label: "🎯 ENTER NOW — BUY EVEN",
+      reason: `Pattern EVEN → 2× ODD  ·  Even% ${evenPct.toFixed(1)}% > 55%`,
+      accentColor: "#22c55e",
+    };
+  }
+
+  /* ── Entry: BUY EVEN — 3 or 5 odds then 2–3 evens */
+  if (/O{3,5}E{2,3}$/.test(eStr) && evenPct > THRESH) {
+    const oRun = (eStr.match(/O+(?=E{2,3}$)/) || [""])[0].length;
+    const eRun = (eStr.match(/E{2,3}$/)       || [""])[0].length;
+    return {
+      action: "BUY_EVEN",
+      label: "🎯 ENTER NOW — BUY EVEN",
+      reason: `Pattern ${oRun}× ODD → ${eRun}× EVEN  ·  Even% ${evenPct.toFixed(1)}% > 55%`,
+      accentColor: "#22c55e",
+    };
+  }
+
+  /* ── Entry: BUY ODD — 3 or 5 evens then 2–3 odds */
+  if (/E{3,5}O{2,3}$/.test(eStr) && oddPct > THRESH) {
+    const eRun = (eStr.match(/E+(?=O{2,3}$)/) || [""])[0].length;
+    const oRun = (eStr.match(/O{2,3}$/)        || [""])[0].length;
+    return {
+      action: "BUY_ODD",
+      label: "🎯 ENTER NOW — BUY ODD",
+      reason: `Pattern ${eRun}× EVEN → ${oRun}× ODD  ·  Odd% ${oddPct.toFixed(1)}% > 55%`,
+      accentColor: "#ef4444",
+    };
+  }
+
+  return {
+    action: "WAIT",
+    label: "⏳ Scanning for entry…",
+    reason: "No valid pattern detected — keep watching",
+    accentColor: "#6b7280",
+  };
+}
+
+function AISignalPanel({ recent, evenPct, oddPct }: { recent: number[]; evenPct: number; oddPct: number }) {
+  const sig = computeSignal(recent, evenPct, oddPct);
+
+  const isBuy  = sig.action === "BUY_ODD" || sig.action === "BUY_EVEN";
+  const isWarn = sig.action === "WARN";
+
+  return (
+    <div
+      className="rounded-xl border p-4 mt-4"
+      style={{
+        background: isBuy
+          ? `linear-gradient(135deg, rgba(0,0,0,0.7) 0%, ${sig.accentColor}22 100%)`
+          : isWarn
+          ? "linear-gradient(135deg, rgba(0,0,0,0.7) 0%, rgba(239,68,68,0.12) 100%)"
+          : "rgba(0,0,0,0.3)",
+        borderColor: isBuy || isWarn ? sig.accentColor : "#374151",
+        boxShadow: isBuy ? `0 0 20px ${sig.accentColor}55` : isWarn ? "0 0 14px rgba(239,68,68,0.3)" : "none",
+      }}
+    >
+      {/* Header */}
+      <div className="flex items-center gap-2 mb-2">
+        <div
+          className="w-2 h-2 rounded-full"
+          style={{
+            backgroundColor: sig.accentColor,
+            animation: isBuy ? "pulse 1s ease-in-out infinite" : "none",
+          }}
+        />
+        <span className="text-[10px] font-bold uppercase tracking-widest" style={{ color: sig.accentColor }}>
+          AI Signal Engine
+        </span>
+      </div>
+
+      {/* Main label */}
+      <div
+        className="text-xl font-black tracking-tight mb-1"
+        style={{ color: isBuy || isWarn ? sig.accentColor : "#9ca3af" }}
+      >
+        {sig.label}
+      </div>
+
+      {/* Reason */}
+      <div className="text-xs" style={{ color: "#9ca3af" }}>
+        {sig.reason}
+      </div>
+
+      {/* Recent E/O strip */}
+      {recent.length >= 5 && (
+        <div className="flex flex-wrap gap-1 mt-3">
+          {recent.slice(-20).map((d, i) => {
+            const isE = d % 2 === 0;
+            return (
+              <div
+                key={i}
+                className="w-5 h-5 rounded-full flex items-center justify-center text-[9px] font-black"
+                style={{
+                  backgroundColor: isE ? "#15803d" : "#7f1d1d",
+                  color: "#fff",
+                  opacity: i < 15 ? 0.5 : 1,
+                }}
+              >
+                {isE ? "E" : "O"}
+              </div>
+            );
+          })}
+        </div>
+      )}
     </div>
   );
 }
@@ -490,6 +696,13 @@ export default function WideEye() {
               })}
             </div>
           </div>
+
+          {/* ── AI Signal Panel ── */}
+          <AISignalPanel
+            recent={displayDigits}
+            evenPct={(evenCount / total) * 100}
+            oddPct={(oddCount / total) * 100}
+          />
         </CardContent>
       </Card>
 
