@@ -1,4 +1,5 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect, useRef } from "react";
+import { playBuySound, playWarnSound } from "@/lib/sound";
 import {
   useDerivWebSocket,
   MARKETS_BY_CATEGORY,
@@ -454,7 +455,17 @@ function computeOUSignal(digits: number[], threshold: number): OUSignalResult {
 
 /* ── Over/Under AI Signal Panel ─────────────────────────────────────────── */
 function OUSignalPanel({ digits, threshold }: { digits: number[]; threshold: number }) {
-  const sig    = computeOUSignal(digits, threshold);
+  const sig     = computeOUSignal(digits, threshold);
+  const prevRef = useRef<string>("WAIT");
+
+  useEffect(() => {
+    if (prevRef.current !== sig.action) {
+      if (sig.action === "BUY_OVER" || sig.action === "BUY_UNDER") playBuySound();
+      else if (sig.action === "WARN") playWarnSound();
+      prevRef.current = sig.action;
+    }
+  }, [sig.action]);
+
   const isBuy  = sig.action === "BUY_OVER" || sig.action === "BUY_UNDER";
   const isWarn = sig.action === "WARN";
 
@@ -520,7 +531,16 @@ function OUSignalPanel({ digits, threshold }: { digits: number[]; threshold: num
 }
 
 function AISignalPanel({ recent, evenPct, oddPct }: { recent: number[]; evenPct: number; oddPct: number }) {
-  const sig = computeSignal(recent, evenPct, oddPct);
+  const sig     = computeSignal(recent, evenPct, oddPct);
+  const prevRef = useRef<string>("WAIT");
+
+  useEffect(() => {
+    if (prevRef.current !== sig.action) {
+      if (sig.action === "BUY_ODD" || sig.action === "BUY_EVEN") playBuySound();
+      else if (sig.action === "WARN") playWarnSound();
+      prevRef.current = sig.action;
+    }
+  }, [sig.action]);
 
   const isBuy  = sig.action === "BUY_ODD" || sig.action === "BUY_EVEN";
   const isWarn = sig.action === "WARN";

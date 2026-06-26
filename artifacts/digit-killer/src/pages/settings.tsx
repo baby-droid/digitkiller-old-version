@@ -65,7 +65,7 @@ export default function Settings() {
   const handleReload = () => window.location.reload();
 
   const handleClearCache = () => {
-    localStorage.removeItem("dk_session");
+    localStorage.removeItem("dk_session_v3");
     sessionStorage.clear();
     window.location.reload();
   };

@@ -1,5 +1,6 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect, useRef } from "react";
 import { useDerivWebSocket, MARKETS_BY_CATEGORY, CATEGORY_LABELS, MarketCategory } from "@/hooks/useDerivWebSocket";
+import { playBuySound, playWarnSound } from "@/lib/sound";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Binary, Zap, Shield, AlertTriangle, CheckCircle2, Activity, TrendingUp } from "lucide-react";
@@ -154,6 +155,14 @@ export default function MatchesDiffers() {
 
   const displayDigits = useMemo(() => digits.map((d) => d.digit), [digits]);
   const signals = useMemo(() => analyzeSignals(displayDigits), [displayDigits]);
+
+  const prevHighRef = useRef(0);
+  useEffect(() => {
+    const high = signals.filter(s => s.confidence === "HIGH").length;
+    if (high > prevHighRef.current) playBuySound();
+    else if (high === 0 && prevHighRef.current > 0) playWarnSound();
+    prevHighRef.current = high;
+  }, [signals]);
   const matchSignals = signals.filter((s) => s.type === "MATCHES");
   const differSignals = signals.filter((s) => s.type === "DIFFERS");
   const freq = useMemo(() => getFrequencies(displayDigits, 100), [displayDigits]);

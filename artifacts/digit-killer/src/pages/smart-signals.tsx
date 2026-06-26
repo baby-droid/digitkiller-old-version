@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { useDerivMultiMarket } from "@/hooks/useDerivMultiMarket";
 import { MARKETS, MARKETS_BY_CATEGORY, CATEGORY_LABELS, MarketCategory } from "@/hooks/useDerivWebSocket";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
@@ -357,13 +357,23 @@ export default function SmartSignals() {
   const [categoryFilter, setCategoryFilter] = useState<CategoryFilter>("all");
   const logoUrl = `${import.meta.env.BASE_URL}logo.png`.replace("//", "/");
 
+  const prevHighCount = useRef(0);
+
   const refresh = useCallback(() => {
     const simplified: Record<string, { digits: number[]; lastDigit: number | null }> = {};
     Object.entries(marketsData).forEach(([sym, d]) => {
       simplified[sym] = { digits: d.digits, lastDigit: d.lastDigit };
     });
-    setSignals(generateSignals(simplified));
+    const newSigs = generateSignals(simplified);
+    setSignals(newSigs);
     setLastGenerated(Date.now());
+    const highConf = newSigs.filter(s => s.confidence >= 75).length;
+    if (highConf > prevHighCount.current) {
+      import("@/lib/sound").then(m => m.playBuySound());
+    } else if (highConf === 0 && prevHighCount.current > 0) {
+      import("@/lib/sound").then(m => m.playWarnSound());
+    }
+    prevHighCount.current = highConf;
   }, [marketsData]);
 
   useEffect(() => {

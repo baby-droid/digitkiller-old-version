@@ -1,5 +1,7 @@
 import { Link, useLocation } from "wouter";
 import { useState, useEffect } from "react";
+import { GlobalSignalMonitor } from "@/components/global-signal-monitor";
+import { unlockAudio } from "@/lib/sound";
 import {
   LayoutDashboard, Activity, Zap, Binary, MonitorPlay,
   Lightbulb, BrainCircuit, TrendingUp, Settings, Cpu,
@@ -55,6 +57,11 @@ export function Layout({ children }: { children: React.ReactNode }) {
   useEffect(() => { setMobileOpen(false); }, [location]);
 
   useEffect(() => {
+    const unlock = () => { unlockAudio(); document.removeEventListener("click", unlock); };
+    document.addEventListener("click", unlock, { once: true });
+  }, []);
+
+  useEffect(() => {
     const handler = (e: Event) => {
       e.preventDefault();
       setDeferredPrompt(e as Event & { prompt?: () => void });
@@ -77,6 +84,9 @@ export function Layout({ children }: { children: React.ReactNode }) {
 
   return (
     <div className="flex h-screen overflow-hidden bg-background text-foreground font-sans">
+      {/* ── Global AI signal sound monitor (active on all pages) ── */}
+      <GlobalSignalMonitor />
+
       {/* ── Mobile backdrop ── */}
       {mobileOpen && (
         <div
