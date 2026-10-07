@@ -2,10 +2,8 @@ import { useState, useMemo, useEffect, useRef } from "react";
 import { playBuySound, playWarnSound } from "@/lib/sound";
 import {
   useDerivWebSocket,
-  MARKETS_BY_CATEGORY,
-  CATEGORY_LABELS,
-  MarketCategory,
 } from "@/hooks/useDerivWebSocket";
+import { MarketSelector } from "@/components/market-selector";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Eye, Activity } from "lucide-react";
@@ -688,7 +686,6 @@ export default function WideEye() {
   const underCount = displayDigits.filter((d) => d < overUnderThreshold).length;
   const equalCount = displayDigits.filter((d) => d === overUnderThreshold).length;
 
-  const allMarkets = Object.entries(MARKETS_BY_CATEGORY);
   const priceStr   = currentPrice !== null
     ? currentPrice.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 5 })
     : "—";
@@ -739,26 +736,7 @@ export default function WideEye() {
             <label className="text-sm font-semibold mb-1.5 block" style={{ color: "#4ade80" }}>
               Select Market:
             </label>
-            <select
-              value={selectedMarket}
-              onChange={(e) => setSelectedMarket(e.target.value)}
-              className="w-full rounded-md px-3 py-2.5 text-sm font-mono focus:outline-none focus:ring-2"
-              style={{
-                background: "rgba(0,0,0,0.5)",
-                border: "1px solid #166534",
-                color: "#86efac",
-              }}
-            >
-              {allMarkets.map(([cat, mkts]) => (
-                <optgroup key={cat} label={CATEGORY_LABELS[cat as MarketCategory]}>
-                  {mkts.map((m) => (
-                    <option key={m.symbol} value={m.symbol} style={{ backgroundColor: "#052e16" }}>
-                      {m.name}
-                    </option>
-                  ))}
-                </optgroup>
-              ))}
-            </select>
+            <MarketSelector value={selectedMarket} onChange={setSelectedMarket} testId="select-market-wide-eye" />
           </div>
 
           {/* Price + live digit row */}

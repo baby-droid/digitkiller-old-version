@@ -19,6 +19,7 @@ const navItems = [
   { name: "Dashboard",       href: "/",               icon: LayoutDashboard },
   { name: "Smart Trade",     href: "/smart-trade",    icon: BrainCog },
   { name: "Smart Signals",   href: "/smart-signals",  icon: Sparkles,   badge: "HOT" },
+  { name: "Mark Syn Trader Signal", href: "/mark-syn-trader-signal", icon: Activity, badge: "LIVE" },
   { name: "Wide Eye View",   href: "/wide-eye",       icon: Eye },
   { name: "Market Scanner",  href: "/scanner",        icon: Activity },
   { name: "AI Signals",      href: "/signals",        icon: Zap },
@@ -71,6 +72,12 @@ export function Layout({ children }: { children: React.ReactNode }) {
     window.addEventListener("beforeinstallprompt", handler);
     return () => window.removeEventListener("beforeinstallprompt", handler);
   }, []);
+
+  const handleInstall = async () => {
+    await deferredPrompt?.prompt?.();
+    setDeferredPrompt(null);
+    setShowInstall(false);
+  };
 
   const handleSoundToggle = (e: React.MouseEvent) => {
     e.stopPropagation();

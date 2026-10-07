@@ -1,7 +1,8 @@
 import { useState, useMemo } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { useDerivWebSocket, MARKETS, MARKETS_BY_CATEGORY, CATEGORY_LABELS, MarketCategory } from "@/hooks/useDerivWebSocket";
+import { useDerivWebSocket, MARKETS } from "@/hooks/useDerivWebSocket";
+import { MarketSelector } from "@/components/market-selector";
 import {
   Cpu, TrendingUp, TrendingDown, Activity, Zap,
   ArrowUpDown, BarChart2, Layers, Target, RefreshCw, Timer,
@@ -197,19 +198,7 @@ export default function TickGenerator() {
           <div className="flex flex-wrap gap-4 items-end">
             <div className="flex-1 min-w-48">
               <label className="text-xs font-bold text-muted-foreground uppercase mb-1.5 block">Select Market</label>
-              <select
-                value={selectedMarket}
-                onChange={(e) => setSelectedMarket(e.target.value)}
-                className="w-full bg-background border border-border text-foreground rounded-md px-3 py-2 text-sm font-mono focus:outline-none focus:border-primary"
-              >
-                {Object.entries(MARKETS_BY_CATEGORY).map(([cat, mkts]) => (
-                  <optgroup key={cat} label={CATEGORY_LABELS[cat as MarketCategory]}>
-                    {mkts.map((m) => (
-                      <option key={m.symbol} value={m.symbol}>{m.name}</option>
-                    ))}
-                  </optgroup>
-                ))}
-              </select>
+              <MarketSelector value={selectedMarket} onChange={setSelectedMarket} testId="select-market-tick-generator" />
             </div>
             <div className="flex gap-5 text-sm">
               <div>

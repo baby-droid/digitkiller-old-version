@@ -15,6 +15,7 @@ import Signals        from "@/pages/signals";
 import TickGenerator  from "@/pages/tick-generator";
 import SmartTrade     from "@/pages/smart-trade";
 import SmartSignals   from "@/pages/smart-signals";
+import MarkSynTraderSignal from "@/pages/mark-syn-trader-signal";
 import Forex          from "@/pages/forex";
 import Analysis       from "@/pages/analysis";
 import TradeDesk      from "@/pages/trade-desk";
@@ -53,6 +54,7 @@ function AppContent() {
         <Route path="/tick-generator"  component={TickGenerator} />
         <Route path="/smart-trade"     component={SmartTrade} />
         <Route path="/smart-signals"   component={SmartSignals} />
+        <Route path="/mark-syn-trader-signal" component={MarkSynTraderSignal} />
         <Route path="/forex"           component={Forex} />
         <Route path="/analysis"        component={Analysis} />
         <Route path="/trade-desk"      component={TradeDesk} />

@@ -7,11 +7,14 @@ import {
 
 type MarketData = {
   isConnected: boolean;
+  historyLoaded: boolean;
+  error: string | null;
   price: number | null;
   lastDigit: number | null;
   evenOddRatio: number;
   signal: "BUY" | "SELL" | "WAIT";
   digits: number[];
+  prices: number[];
   frequencies: number[];
 };
 
@@ -28,7 +31,7 @@ export function useDerivMultiMarket() {
       subscribeToMarket(market.symbol, () => {
         const data = marketDataFor(market.symbol);
         setMarketsData((previous) => ({ ...previous, [market.symbol]: data }));
-      })
+      }, 0)
     );
     setMarketsData(
       MARKETS.reduce((next, market) => {
@@ -44,7 +47,7 @@ export function useDerivMultiMarket() {
 
 function marketDataFor(symbol: string): MarketData {
   const snapshot = getMarketFeedSnapshot(symbol);
-  const ticks = snapshot.digits.slice(-100);
+  const ticks = snapshot.digits.slice(-1000);
   const digits = ticks.map((tick) => tick.digit);
   const counts = new Array(10).fill(0);
   let evens = 0;
@@ -62,11 +65,14 @@ function marketDataFor(symbol: string): MarketData {
 
   return {
     isConnected: snapshot.isConnected,
+    historyLoaded: snapshot.historyLoaded,
+    error: snapshot.error,
     price: ticks[ticks.length - 1]?.price ?? null,
     lastDigit: digits[digits.length - 1] ?? null,
     evenOddRatio,
     signal,
     digits,
+    prices: ticks.map((tick) => tick.price),
     frequencies: counts.map((count) => (count / total) * 100),
   };
 }
