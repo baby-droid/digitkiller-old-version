@@ -6,16 +6,27 @@ export type TickData = {
   time: number;
 };
 
-export type MarketCategory = "volatility" | "crash_boom" | "jump" | "bear_bull";
+export type MarketCategory =
+  | "volatility"
+  | "crash_boom"
+  | "jump"
+  | "bear_bull"
+  | "forex"
+  | "indices"
+  | "commodities"
+  | "cryptocurrencies"
+  | "stocks"
+  | "other";
 
 export type Market = {
   name: string;
   symbol: string;
   category: MarketCategory;
   pipSize?: number;
+  exchangeIsOpen?: boolean;
 };
 
-export const MARKETS_BY_CATEGORY: Record<MarketCategory, Market[]> = {
+const CURATED_MARKETS_BY_CATEGORY: Record<MarketCategory, Market[]> = {
   volatility: [
     { name: "Vol 10",   symbol: "R_10",     category: "volatility", pipSize: 3 },
     { name: "Vol 25",   symbol: "R_25",     category: "volatility", pipSize: 3 },
@@ -56,14 +67,150 @@ export const MARKETS_BY_CATEGORY: Record<MarketCategory, Market[]> = {
   ],
 };
 
-export const CATEGORY_LABELS: Record<MarketCategory, string> = {
+const BASE_CATEGORY_LABELS: Record<MarketCategory, string> = {
   volatility:  "Volatility",
   crash_boom:  "Crash / Boom",
   jump:        "Jump",
   bear_bull:   "Bear · Bull · Step",
+  forex: "Forex",
+  indices: "Indices",
+  commodities: "Commodities",
+  cryptocurrencies: "Cryptocurrencies",
+  stocks: "Stocks",
+  other: "Other active markets",
 };
 
-export const MARKETS: Market[] = Object.values(MARKETS_BY_CATEGORY).flat();
+export let MARKETS_BY_CATEGORY: Record<MarketCategory, Market[]> = CURATED_MARKETS_BY_CATEGORY;
+export let CATEGORY_LABELS: Record<MarketCategory, string> = BASE_CATEGORY_LABELS;
+export let MARKETS: Market[] = Object.values(MARKETS_BY_CATEGORY).flat();
+
+type DerivActiveSymbol = {
+  underlying_symbol: string;
+  underlying_symbol_name: string;
+  underlying_symbol_type?: string;
+  market?: string;
+  submarket?: string;
+  pip_size?: number;
+  exchange_is_open?: number;
+  is_trading_suspended?: number;
+};
+
+export type MarketCatalogSnapshot = {
+  markets: Market[];
+  loaded: boolean;
+  error: string | null;
+};
+
+const marketCatalogListeners = new Set<() => void>();
+let marketCatalogSnapshot: MarketCatalogSnapshot = {
+  markets: MARKETS,
+  loaded: false,
+  error: null,
+};
+
+function notifyCatalog() {
+  marketCatalogListeners.forEach((listener) => listener());
+}
+
+function publishMarketCatalog(patch: Partial<MarketCatalogSnapshot>) {
+  marketCatalogSnapshot = { ...marketCatalogSnapshot, ...patch };
+  notifyCatalog();
+}
+
+function categoryForSymbol(entry: DerivActiveSymbol): MarketCategory {
+  const symbol = entry.underlying_symbol.toUpperCase();
+  const fixedMarket = Object.values(CURATED_MARKETS_BY_CATEGORY)
+    .flat()
+    .find((market) => market.symbol === entry.underlying_symbol);
+  if (fixedMarket) return fixedMarket.category;
+  if (/^(1HZ|R_)/.test(symbol)) return "volatility";
+  if (/^(CRASH|BOOM)/.test(symbol)) return "crash_boom";
+  if (/^JD/.test(symbol)) return "jump";
+  if (/^(RDBEAR|RDBULL|STP|RB)/.test(symbol)) return "bear_bull";
+
+  const marketType = `${entry.market ?? ""} ${entry.submarket ?? ""} ${entry.underlying_symbol_type ?? ""}`.toLowerCase();
+  if (marketType.includes("forex")) return "forex";
+  if (marketType.includes("crypto")) return "cryptocurrencies";
+  if (marketType.includes("commodit") || marketType.includes("metal")) return "commodities";
+  if (marketType.includes("stock")) return "stocks";
+  if (marketType.includes("index") || marketType.includes("indices")) return "indices";
+  return "other";
+}
+
+function normalizeActiveMarkets(entries: DerivActiveSymbol[]): Market[] {
+  const markets = new Map<string, Market>();
+  for (const entry of entries) {
+    if (!entry || typeof entry.underlying_symbol !== "string") continue;
+    if (entry.is_trading_suspended === 1) continue;
+    const fixedMarket = Object.values(CURATED_MARKETS_BY_CATEGORY)
+      .flat()
+      .find((market) => market.symbol === entry.underlying_symbol);
+    const name = fixedMarket?.name
+      ?? entry.underlying_symbol_name.replace(/\s+Index$/i, "");
+    const category = categoryForSymbol(entry);
+    markets.set(entry.underlying_symbol, {
+      name,
+      symbol: entry.underlying_symbol,
+      category,
+      ...(typeof entry.pip_size === "number" ? { pipSize: entry.pip_size } : {}),
+      ...(typeof entry.exchange_is_open === "number"
+        ? { exchangeIsOpen: entry.exchange_is_open === 1 }
+        : {}),
+    });
+  }
+
+  return [...markets.values()].sort((left, right) => {
+    const categoryOrder = Object.keys(BASE_CATEGORY_LABELS);
+    const byCategory = categoryOrder.indexOf(left.category) - categoryOrder.indexOf(right.category);
+    return byCategory || left.name.localeCompare(right.name);
+  });
+}
+
+function publishActiveMarkets(entries: DerivActiveSymbol[]) {
+  const markets = normalizeActiveMarkets(entries);
+  if (markets.length === 0) {
+    publishMarketCatalog({ loaded: true, error: "Deriv returned no active markets for the supported contracts." });
+    return;
+  }
+
+  const grouped = Object.fromEntries(
+    Object.keys(BASE_CATEGORY_LABELS).map((category) => [
+      category,
+      markets.filter((market) => market.category === category),
+    ]),
+  ) as Record<MarketCategory, Market[]>;
+  const signature = markets.map((market) =>
+    [market.symbol, market.name, market.category, market.pipSize, market.exchangeIsOpen].join(":"),
+  ).join("|");
+  const previousSignature = marketCatalogSnapshot.markets.map((market) =>
+    [market.symbol, market.name, market.category, market.pipSize, market.exchangeIsOpen].join(":"),
+  ).join("|");
+  if (signature !== previousSignature || !marketCatalogSnapshot.loaded || marketCatalogSnapshot.error) {
+    MARKETS_BY_CATEGORY = grouped;
+    CATEGORY_LABELS = BASE_CATEGORY_LABELS;
+    MARKETS = markets;
+    publishMarketCatalog({ markets, loaded: true, error: null });
+  }
+  activeMarketSymbols.clear();
+  activeMarketPipSizes.clear();
+  markets.forEach((market) => {
+    activeMarketSymbols.add(market.symbol);
+    if (market.pipSize !== undefined) activeMarketPipSizes.set(market.symbol, market.pipSize);
+  });
+}
+
+export function getMarketCatalogSnapshot() {
+  return marketCatalogSnapshot;
+}
+
+export function subscribeToMarketCatalog(listener: () => void) {
+  marketCatalogListeners.add(listener);
+  return () => marketCatalogListeners.delete(listener);
+}
+
+export function useDerivMarketCatalog() {
+  return useSyncExternalStore(subscribeToMarketCatalog, getMarketCatalogSnapshot, getMarketCatalogSnapshot);
+}
 
 export const DERIV_PUBLIC_WS_URL = "wss://api.derivws.com/trading/v1/options/ws/public";
 const PING_MS   = 25000;
@@ -72,6 +219,7 @@ const HISTORY_TICKS = 1000;
 const MAX_HISTORY_REQUESTS = 4;
 const HISTORY_TIMEOUT_MS = 12000;
 const MAX_HISTORY_RETRIES = 2;
+const ACTIVE_SYMBOLS_TIMEOUT_MS = 12000;
 
 /**
  * Extract the last digit of a price using the exact pip_size from the API.
@@ -86,6 +234,7 @@ export type MarketFeedSnapshot = {
   digits: TickData[];
   isConnected: boolean;
   historyLoaded: boolean;
+  historyPhase: "idle" | "queued" | "loading" | "loaded";
   pipSize: number;
   error: string | null;
 };
@@ -106,14 +255,20 @@ const requestTimers = new Map<number, ReturnType<typeof setTimeout>>();
 const retryTimers = new Map<string, ReturnType<typeof setTimeout>>();
 const retryCounts = new Map<string, number>();
 const symbolPriorities = new Map<string, number>();
+const activeMarketSymbols = new Set<string>();
+const activeMarketPipSizes = new Map<string, number>();
 let socket: WebSocket | null = null;
 let pingTimer: ReturnType<typeof setInterval> | null = null;
 let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
 let idleTimer: ReturnType<typeof setTimeout> | null = null;
+let catalogTimeoutTimer: ReturnType<typeof setTimeout> | null = null;
+let catalogRetryTimer: ReturnType<typeof setTimeout> | null = null;
+let catalogRequestId: number | null = null;
+let catalogRetryCount = 0;
 let nextRequestId = 1;
 
 function defaultPipSize(symbol: string) {
-  return MARKETS.find((market) => market.symbol === symbol)?.pipSize ?? 4;
+  return activeMarketPipSizes.get(symbol) ?? MARKETS.find((market) => market.symbol === symbol)?.pipSize ?? 4;
 }
 
 function getOrCreateMarketState(symbol: string): MarketFeedSnapshot {
@@ -123,6 +278,7 @@ function getOrCreateMarketState(symbol: string): MarketFeedSnapshot {
       digits: [],
       isConnected: false,
       historyLoaded: false,
+      historyPhase: "idle",
       pipSize: defaultPipSize(symbol),
       error: null,
     };
@@ -162,6 +318,82 @@ function clearRequestTimer(requestId: number) {
   requestTimers.delete(requestId);
 }
 
+function clearCatalogTimeout() {
+  if (catalogTimeoutTimer) clearTimeout(catalogTimeoutTimer);
+  catalogTimeoutTimer = null;
+}
+
+function scheduleCatalogRetry() {
+  if (catalogRetryTimer || catalogRetryCount >= MAX_HISTORY_RETRIES || activeSymbols().length === 0) return;
+  catalogRetryCount += 1;
+  catalogRetryTimer = setTimeout(() => {
+    catalogRetryTimer = null;
+    if (socket?.readyState === WebSocket.OPEN && !marketCatalogSnapshot.loaded) {
+      requestActiveSymbols();
+    }
+  }, 2500 * catalogRetryCount);
+}
+
+function requestActiveSymbols() {
+  if (socket?.readyState !== WebSocket.OPEN) return;
+  clearCatalogTimeout();
+  const requestId = nextRequestId++;
+  catalogRequestId = requestId;
+  socket.send(JSON.stringify({
+    active_symbols: "brief",
+    contract_type: [
+      "DIGITMATCH",
+      "DIGITDIFF",
+      "DIGITOVER",
+      "DIGITUNDER",
+      "DIGITEVEN",
+      "DIGITODD",
+      "CALL",
+      "PUT",
+      "UPORDOWN",
+    ],
+    req_id: requestId,
+  }));
+  catalogTimeoutTimer = setTimeout(() => {
+    if (catalogRequestId !== requestId) return;
+    catalogRequestId = null;
+    catalogTimeoutTimer = null;
+    publishMarketCatalog({
+      loaded: false,
+      error: "Deriv's active market list timed out. Retry to check symbols again.",
+    });
+    scheduleCatalogRetry();
+  }, ACTIVE_SYMBOLS_TIMEOUT_MS);
+}
+
+function acceptActiveSymbols(data: Record<string, any>) {
+  if (!Array.isArray(data.active_symbols)) return;
+  clearCatalogTimeout();
+  catalogRequestId = null;
+  catalogRetryCount = 0;
+  if (catalogRetryTimer) clearTimeout(catalogRetryTimer);
+  catalogRetryTimer = null;
+  publishActiveMarkets(data.active_symbols as DerivActiveSymbol[]);
+
+  activeSymbols().forEach((symbol) => {
+    if (!activeMarketSymbols.has(symbol)) {
+      updateMarketState(symbol, {
+        isConnected: true,
+        historyLoaded: false,
+        historyPhase: "idle",
+        error: "This symbol is not active for the supported Deriv contracts.",
+      });
+      return;
+    }
+    updateMarketState(symbol, {
+      isConnected: true,
+      error: null,
+      historyPhase: "queued",
+    });
+    subscribeSymbol(symbol, symbolPriorities.get(symbol) ?? 0);
+  });
+}
+
 function removeQueuedSymbol(symbol: string) {
   const index = requestQueue.indexOf(symbol);
   if (index !== -1) requestQueue.splice(index, 1);
@@ -176,7 +408,7 @@ function scheduleHistoryRetry(symbol: string) {
   const timer = setTimeout(() => {
     retryTimers.delete(symbol);
     if (marketListeners.get(symbol)?.size && !activeSubscriptions.has(symbol)) {
-      updateMarketState(symbol, { error: null });
+      updateMarketState(symbol, { error: null, historyPhase: "queued" });
       subscribeSymbol(symbol, symbolPriorities.get(symbol) ?? 0);
     }
   }, 2500 * (attempts + 1));
@@ -197,6 +429,7 @@ function startQueuedHistoryRequests() {
 
     active.startedAt = Date.now();
     try {
+      updateMarketState(symbol, { historyPhase: "loading", error: null });
       socket.send(JSON.stringify({
         ticks_history: symbol,
         end: "latest",
@@ -205,7 +438,7 @@ function startQueuedHistoryRequests() {
         subscribe: 1,
         req_id: active.requestId,
       }));
-      updateMarketState(symbol, { isConnected: true, historyLoaded: false, error: null });
+      updateMarketState(symbol, { isConnected: true, historyLoaded: false });
 
       const requestId = active.requestId;
       const timer = setTimeout(() => {
@@ -217,6 +450,7 @@ function startQueuedHistoryRequests() {
         updateMarketState(symbol, {
           isConnected: true,
           historyLoaded: false,
+          historyPhase: "idle",
           error: "Market history timed out. Retrying the subscription.",
         });
         scheduleHistoryRetry(symbol);
@@ -236,6 +470,16 @@ function startQueuedHistoryRequests() {
 function subscribeSymbol(symbol: string, priority = 0) {
   if (socket?.readyState !== WebSocket.OPEN || !marketListeners.get(symbol)?.size) return;
   if (activeSubscriptions.has(symbol)) return;
+  if (!marketCatalogSnapshot.loaded) return;
+  if (!activeMarketSymbols.has(symbol)) {
+    updateMarketState(symbol, {
+      isConnected: true,
+      historyLoaded: false,
+      historyPhase: "idle",
+      error: "This symbol is not active for the supported Deriv contracts.",
+    });
+    return;
+  }
 
   const requestId = nextRequestId++;
   const subscription: ActiveSubscription = {
@@ -247,6 +491,7 @@ function subscribeSymbol(symbol: string, priority = 0) {
   activeSubscriptions.set(symbol, subscription);
   requestSymbols.set(requestId, symbol);
   requestQueue.push(symbol);
+  updateMarketState(symbol, { historyPhase: "queued", error: null });
   requestQueue.sort((left, right) =>
     (activeSubscriptions.get(right)?.priority ?? 0) -
     (activeSubscriptions.get(left)?.priority ?? 0),
@@ -284,6 +529,10 @@ function closeIdleSocket() {
   requestTimers.clear();
   retryTimers.forEach((timer) => clearTimeout(timer));
   retryTimers.clear();
+  clearCatalogTimeout();
+  if (catalogRetryTimer) clearTimeout(catalogRetryTimer);
+  catalogRetryTimer = null;
+  catalogRequestId = null;
 }
 
 function scheduleReconnect() {
@@ -312,10 +561,7 @@ function connectMarketSocket() {
       }
     }, PING_MS);
 
-    activeSymbols().forEach((symbol) => {
-      updateMarketState(symbol, { isConnected: true, historyLoaded: false, error: null });
-      subscribeSymbol(symbol, symbolPriorities.get(symbol) ?? 0);
-    });
+    requestActiveSymbols();
   };
 
   currentSocket.onmessage = (event: MessageEvent) => {
@@ -325,6 +571,12 @@ function connectMarketSocket() {
     try {
       data = JSON.parse(event.data as string);
     } catch {
+      return;
+    }
+
+    if (data.msg_type === "active_symbols") {
+      if (catalogRequestId !== null && data.req_id !== catalogRequestId) return;
+      acceptActiveSymbols(data);
       return;
     }
 
@@ -380,8 +632,9 @@ function connectMarketSocket() {
         digits: digits.slice(-MAX_TICKS),
         isConnected: true,
         historyLoaded: true,
+        historyPhase: "loaded",
         pipSize,
-        error: null,
+        error: digits.length === 0 ? "No recent tick history returned; waiting for live ticks." : null,
       });
       retryCounts.delete(symbol);
       const retryTimer = retryTimers.get(symbol);
@@ -415,13 +668,26 @@ function connectMarketSocket() {
         digits,
         isConnected: true,
         pipSize,
-        error: null,
+        error: previous.historyLoaded ? null : "Collecting live ticks because Deriv returned no history.",
       });
       return;
     }
 
     if (data.error) {
       const requestId = typeof data.req_id === "number" ? data.req_id : undefined;
+      if (
+        (requestId !== undefined && requestId === catalogRequestId)
+        || data.echo_req?.active_symbols
+      ) {
+        clearCatalogTimeout();
+        catalogRequestId = null;
+        publishMarketCatalog({
+          loaded: false,
+          error: String(data.error.message ?? "Deriv could not load active markets."),
+        });
+        scheduleCatalogRetry();
+        return;
+      }
       const symbol = (requestId ? requestSymbols.get(requestId) : undefined)
         ?? data.echo_req?.ticks_history
         ?? data.echo_req?.ticks;
@@ -443,6 +709,7 @@ function connectMarketSocket() {
         updateMarketState(symbol, {
           isConnected: true,
           historyLoaded: false,
+          historyPhase: "idle",
           error: String(data.error.message ?? "Market data request failed."),
         });
         if (isCurrentRequest) scheduleHistoryRetry(symbol);
@@ -460,6 +727,8 @@ function connectMarketSocket() {
     requestQueue.length = 0;
     activeSubscriptions.clear();
     requestSymbols.clear();
+    clearCatalogTimeout();
+    catalogRequestId = null;
     retryTimers.forEach((timer) => clearTimeout(timer));
     retryTimers.clear();
     activeSymbols().forEach((symbol) => {
@@ -495,6 +764,7 @@ export function subscribeToMarket(symbol: string, listener: () => void, priority
       digits: [],
       isConnected: socket?.readyState === WebSocket.OPEN,
       historyLoaded: false,
+        historyPhase: "idle",
       pipSize: defaultPipSize(symbol),
       error: null,
     });
@@ -546,6 +816,7 @@ export function subscribeToMarket(symbol: string, listener: () => void, priority
       digits: [],
       isConnected: false,
       historyLoaded: false,
+      historyPhase: "idle",
       pipSize: defaultPipSize(symbol),
       error: null,
     });
@@ -562,6 +833,11 @@ export function subscribeToMarket(symbol: string, listener: () => void, priority
 
 export function refreshMarketHistory(symbol: string) {
   if (!marketListeners.get(symbol)?.size) return;
+  if (!marketCatalogSnapshot.loaded) {
+    publishMarketCatalog({ error: null });
+    requestActiveSymbols();
+    return;
+  }
 
   const retryTimer = retryTimers.get(symbol);
   if (retryTimer) clearTimeout(retryTimer);
@@ -581,6 +857,7 @@ export function refreshMarketHistory(symbol: string) {
     digits: [],
     isConnected: socket?.readyState === WebSocket.OPEN,
     historyLoaded: false,
+    historyPhase: "idle",
     error: null,
   });
   connectMarketSocket();

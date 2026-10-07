@@ -1,16 +1,18 @@
 import { useEffect, useState } from "react";
 import {
   getMarketFeedSnapshot,
-  MARKETS,
+  useDerivMarketCatalog,
   subscribeToMarket,
 } from "./useDerivWebSocket";
 
-type MarketData = {
+export type MarketData = {
   isConnected: boolean;
   historyLoaded: boolean;
+  historyPhase: "idle" | "queued" | "loading" | "loaded";
   error: string | null;
   price: number | null;
   lastDigit: number | null;
+  pipSize: number;
   evenOddRatio: number;
   signal: "BUY" | "SELL" | "WAIT";
   digits: number[];
@@ -19,28 +21,29 @@ type MarketData = {
 };
 
 export function useDerivMultiMarket() {
+  const { markets } = useDerivMarketCatalog();
   const [marketsData, setMarketsData] = useState<Record<string, MarketData>>(() =>
-    MARKETS.reduce((acc, market) => {
+    markets.reduce((acc, market) => {
       acc[market.symbol] = marketDataFor(market.symbol);
       return acc;
     }, {} as Record<string, MarketData>)
   );
 
   useEffect(() => {
-    const unsubscribers = MARKETS.map((market) =>
+    const unsubscribers = markets.map((market) =>
       subscribeToMarket(market.symbol, () => {
         const data = marketDataFor(market.symbol);
         setMarketsData((previous) => ({ ...previous, [market.symbol]: data }));
       }, 0)
     );
     setMarketsData(
-      MARKETS.reduce((next, market) => {
+      markets.reduce((next, market) => {
         next[market.symbol] = marketDataFor(market.symbol);
         return next;
       }, {} as Record<string, MarketData>)
     );
     return () => unsubscribers.forEach((unsubscribe) => unsubscribe());
-  }, []);
+  }, [markets]);
 
   return marketsData;
 }
@@ -66,9 +69,11 @@ function marketDataFor(symbol: string): MarketData {
   return {
     isConnected: snapshot.isConnected,
     historyLoaded: snapshot.historyLoaded,
+    historyPhase: snapshot.historyPhase,
     error: snapshot.error,
     price: ticks[ticks.length - 1]?.price ?? null,
     lastDigit: digits[digits.length - 1] ?? null,
+    pipSize: snapshot.pipSize,
     evenOddRatio,
     signal,
     digits,

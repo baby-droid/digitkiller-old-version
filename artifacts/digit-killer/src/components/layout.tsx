@@ -38,7 +38,7 @@ const navItems = [
   { name: "Settings",        href: "/settings",       icon: Settings },
 ];
 
-const CATEGORY_ICONS: Record<MarketCategory, React.ReactNode> = {
+const CATEGORY_ICONS: Partial<Record<MarketCategory, React.ReactNode>> = {
   volatility: <Activity className="w-3 h-3" />,
   crash_boom: <TrendingDown className="w-3 h-3" />,
   jump:       <Zap className="w-3 h-3" />,
@@ -286,7 +286,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
                   }`}
                   style={activeCategory === cat ? { backgroundColor: "#15803d", boxShadow: "0 0 8px rgba(34,197,94,0.25)" } : {}}
                 >
-                  {CATEGORY_ICONS[cat]}
+                  {CATEGORY_ICONS[cat] ?? <Activity className="w-3 h-3" />}
                   {CATEGORY_LABELS[cat]}
                 </button>
               ))}

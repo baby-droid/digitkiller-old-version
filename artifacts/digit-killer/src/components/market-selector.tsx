@@ -2,6 +2,7 @@ import {
   CATEGORY_LABELS,
   MARKETS_BY_CATEGORY,
   type MarketCategory,
+  useDerivMarketCatalog,
   useDerivWebSocket,
 } from "@/hooks/useDerivWebSocket";
 
@@ -20,7 +21,25 @@ export function MarketSelector({
   testId = "select-market",
   label = "Select market",
 }: MarketSelectorProps) {
+  const catalog = useDerivMarketCatalog();
   const feed = useDerivWebSocket(value);
+  const historyError = feed.error ?? catalog.error;
+  const historyStatus = feed.historyLoaded
+    ? feed.digits.length === 0
+      ? "No history returned · waiting for live ticks"
+      : feed.digits.length < 1000
+        ? `${feed.digits.length.toLocaleString()} / 1,000 ticks · collecting history`
+        : `1,000 tick history loaded · ${feed.isConnected ? "live" : "reconnecting"}`
+    : historyError
+      ?? (!catalog.loaded
+        ? "Checking Deriv's active markets…"
+        : feed.historyPhase === "queued"
+          ? "Queued for tick history…"
+          : feed.historyPhase === "loading"
+            ? "Requesting the latest 1,000 ticks…"
+            : feed.isConnected
+              ? "Waiting for a history response…"
+              : "Connecting to Deriv's market feed…");
 
   return (
     <div className="space-y-1.5">
@@ -36,6 +55,13 @@ export function MarketSelector({
         }}
         data-testid={testId}
       >
+        {!MARKETS_BY_CATEGORY[Object.keys(MARKETS_BY_CATEGORY)[0] as MarketCategory]?.some((market) => market.symbol === value)
+          && !Object.values(MARKETS_BY_CATEGORY).flat().some((market) => market.symbol === value)
+          && (
+            <option value={value} key={`unavailable-${value}`}>
+              {value} · unavailable
+            </option>
+          )}
         {(Object.entries(MARKETS_BY_CATEGORY) as [MarketCategory, typeof MARKETS_BY_CATEGORY[MarketCategory]][]).map(([category, markets]) => (
           <optgroup key={category} label={CATEGORY_LABELS[category]}>
             {markets.map((market) => (
@@ -47,12 +73,10 @@ export function MarketSelector({
         ))}
       </select>
       <div className="flex min-h-4 items-center justify-between gap-2 text-[10px] font-mono" role="status" data-testid={`status-market-history-${value}`}>
-        <span className={feed.historyLoaded ? "text-emerald-400" : feed.error ? "text-amber-300" : "text-muted-foreground"}>
-          {feed.historyLoaded
-            ? `${Math.min(feed.digits.length, 1000).toLocaleString()} history ticks loaded · ${feed.isConnected ? "live" : "reconnecting"}`
-            : feed.error ?? (feed.isConnected ? "Loading 1,000-tick history…" : "Connecting to market feed…")}
+        <span className={feed.historyLoaded && feed.digits.length >= 1000 ? "text-emerald-400" : historyError ? "text-amber-300" : "text-muted-foreground"}>
+          {historyStatus}
         </span>
-        {feed.error && (
+        {historyError && (
           <button
             type="button"
             onClick={feed.refreshHistory}

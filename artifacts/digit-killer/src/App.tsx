@@ -15,7 +15,7 @@ import Signals        from "@/pages/signals";
 import TickGenerator  from "@/pages/tick-generator";
 import SmartTrade     from "@/pages/smart-trade";
 import SmartSignals   from "@/pages/smart-signals";
-import MarkSynTraderSignal from "@/pages/mark-syn-trader-signal";
+import MarkSynTraderSignal from "@/pages/mark-syn-trader-board";
 import Forex          from "@/pages/forex";
 import Analysis       from "@/pages/analysis";
 import TradeDesk      from "@/pages/trade-desk";

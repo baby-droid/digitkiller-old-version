@@ -17,7 +17,7 @@ const THEMES = [
   { id: 5, name: "Fire Steel",   primary: "#ef4444", bg1: "#0a0000", bg2: "#200000", accent: "#f97316" },
 ];
 
-const CATEGORY_ICONS: Record<MarketCategory, React.ReactNode> = {
+const CATEGORY_ICONS: Partial<Record<MarketCategory, React.ReactNode>> = {
   volatility: <Activity className="w-3.5 h-3.5" />,
   crash_boom: <TrendingDown className="w-3.5 h-3.5" />,
   jump:       <Zap className="w-3.5 h-3.5" />,
@@ -452,7 +452,7 @@ export default function SmartSignals() {
                 : `${CAT_COLORS[cat]} hover:opacity-80`
             }`}
           >
-            {CATEGORY_ICONS[cat]}
+            {CATEGORY_ICONS[cat] ?? <Activity className="w-3.5 h-3.5" />}
             {CAT_LABELS[cat]}
             {catCounts[cat] > 0 && (
               <span className="text-[10px] opacity-80">{catCounts[cat]}</span>
