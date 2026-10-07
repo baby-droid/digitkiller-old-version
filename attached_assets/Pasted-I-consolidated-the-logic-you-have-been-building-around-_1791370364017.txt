@@ -1,0 +1,1147 @@
+I consolidated the logic you have been building around **MarkSynTrader / AhmedSynTrader** into a single architecture: **market scanner → multi-window analysis → contract selector → entry engine → run-count engine → signal page → pairing → bot loader → authenticated Deriv execution**.
+
+I also submitted the update to your existing MarkSynTrader AppDeploy project. The deployment was accepted, but the AppDeploy status endpoint is currently returning an internal error, so I cannot honestly mark the new deployment as QA-verified yet.
+
+**App:** [MarkSynTrader](https://marksyntrader-adxa1v.v2.appdeploy.ai/?utm_source=chatgpt.com)
+
+## 1. Core architecture
+
+The new page should be:
+
+### **MARK SYN TRADER SIGNAL**
+
+```text
+DERIV LIVE WEBSOCKET
+        ↓
+ACTIVE MARKETS
+        ↓
+MARKET FAMILY FILTER
+        ↓
+1,000 TICK BASELINE
+        ↓
+┌───────────────────────────────┐
+│ 100T distribution              │
+│ 50T distribution               │
+│ 20T distribution               │
+│ 10T distribution               │
+│ parity flow                    │
+│ rise/fall flow                 │
+│ barrier pressure               │
+│ repeated patterns              │
+│ latest digit                   │
+│ transition behaviour           │
+│ entropy/concentration          │
+└───────────────────────────────┘
+        ↓
+CONTRACT ENGINES
+        ↓
+┌──────────┬──────────┬──────────┐
+│ ODD/EVEN │ OVER/UNDER│ RISE/FALL│
+├──────────┼──────────┼──────────┤
+│ MATCH    │ DIFFERS   │ UP/DOWN  │
+├──────────┴──────────┴──────────┤
+│ HIGH/LOW TICK / other available │
+└─────────────────────────────────┘
+        ↓
+ENTRY CONFIRMATION
+        ↓
+SIGNAL SCORE
+        ↓
+1–10 RUN RECOMMENDATION
+        ↓
+MARK SYN TRADER SIGNAL
+        ↓
+PAIRING CODE
+        ↓
+MARKSYNTRADER TRADING APP
+        ↓
+LOAD BOT
+        ↓
+AUTHENTICATED DERIV ACCOUNT
+        ↓
+PROPOSAL → BUY → POSITION MONITOR
+```
+
+Deriv's current API supports public tick streams and historical ticks without authentication, while trading operations such as buying contracts require authentication. ([Deriv API][1])
+
+---
+
+# 2. Market scanner
+
+The scanner continuously loads:
+
+### Volatility 1s
+
+* 1HZ10
+* 1HZ25
+* 1HZ50
+* 1HZ75
+* 1HZ100
+
+### Plain Index
+
+* Volatility 10
+* Volatility 25
+* Volatility 50
+* Volatility 75
+* Volatility 100
+
+### Other families
+
+* Bear
+* Bull
+* Jump
+* Crash/Boom
+* other supported synthetic markets
+
+The important rule is:
+
+> **Do not select a market simply because it has the highest percentage.**
+
+Instead:
+
+```text
+Market Score =
+distribution quality
++ multi-window agreement
++ parity agreement
++ directional agreement
++ barrier edge
++ pattern recurrence
++ stability
+- short-window conflict
+- high entropy
+- unstable transitions
+```
+
+Then rank every market:
+
+```text
+#1 BEST SETUP
+#2 SECOND SETUP
+#3 THIRD SETUP
+...
+```
+
+---
+
+# 3. Your 1,000 / 100 / 50 / 20 / 10 tick logic
+
+The 1,000 ticks are the **structural baseline**, not automatically the entry trigger.
+
+Use:
+
+```text
+1,000T = long-term structure
+100T   = primary current distribution
+50T    = medium confirmation
+20T    = short confirmation
+10T    = immediate entry trigger
+```
+
+For example:
+
+```text
+1,000T → EVEN structure
+100T   → EVEN 54.2%
+50T    → EVEN 56.0%
+20T    → EVEN 60.0%
+10T    → EVEN 70.0%
+```
+
+This is stronger than simply saying:
+
+```text
+EVEN = 70%
+```
+
+because the engine can determine whether the short-term move agrees with the larger structure.
+
+---
+
+# 4. Digit distribution engine
+
+Every tick produces:
+
+```text
+latest price
+        ↓
+last decimal digit
+        ↓
+0–9 distribution
+```
+
+For every window:
+
+```text
+digit 0 = %
+digit 1 = %
+digit 2 = %
+...
+digit 9 = %
+```
+
+The UI keeps your requested ranking:
+
+```text
+GREEN  = highest
+BLUE   = second highest
+YELLOW = second lowest
+RED    = lowest
+```
+
+and the moving triangle points to the latest digit.
+
+The engine should also calculate:
+
+```text
+dominantDigit
+secondHighest
+lowestDigit
+secondLowest
+latestDigit
+digitRun
+digitTransition
+digitRecurrence
+digitConcentration
+```
+
+---
+
+# 5. Even / Odd engine
+
+Calculate:
+
+```text
+Odd %  = odd digits / total × 100
+Even % = even digits / total × 100
+```
+
+Then compare all windows.
+
+### Example
+
+```text
+1000T  ODD 51.8
+100T   ODD 54.1
+50T    ODD 56.0
+20T    ODD 60.0
+10T    ODD 70.0
+```
+
+This produces:
+
+```text
+ODD FLOW
+Agreement = 5/5
+```
+
+But:
+
+```text
+1000T ODD 51.8
+100T  EVEN 53.2
+50T   EVEN 55.0
+20T   ODD 60.0
+10T   EVEN 70.0
+```
+
+produces:
+
+```text
+CONFLICT
+NO ENTRY
+```
+
+The engine should **never force a trade simply because the latest 10 ticks look attractive**.
+
+---
+
+# 6. Over 1 → Over 7
+
+Your Over engine should explicitly calculate:
+
+```text
+OVER 1
+OVER 2
+OVER 3
+OVER 4
+OVER 5
+OVER 6
+OVER 7
+```
+
+For barrier `b`:
+
+```text
+Over(b) =
+count(digit > b) / total × 100
+```
+
+So:
+
+```text
+OVER 1 = digits 2–9
+OVER 2 = digits 3–9
+OVER 3 = digits 4–9
+...
+OVER 7 = digits 8–9
+```
+
+Then score each barrier across:
+
+```text
+1000T
+100T
+50T
+20T
+10T
+```
+
+Example:
+
+```text
+OVER 2
+
+1000T = 76.1%
+100T  = 78.0%
+50T   = 80.0%
+20T   = 85.0%
+10T   = 90.0%
+```
+
+This becomes a strong candidate **only if the shorter windows are not contradicting the structural distribution**.
+
+Deriv's proposal API accepts a barrier for digit contracts, so the selected barrier can be passed into the actual contract proposal. ([Deriv API][2])
+
+---
+
+# 7. Under 8 → Under 1
+
+Same system in reverse:
+
+```text
+UNDER 8
+UNDER 7
+UNDER 6
+UNDER 5
+UNDER 4
+UNDER 3
+UNDER 2
+UNDER 1
+```
+
+Use:
+
+```text
+Under(b) =
+count(digit <= b) / total × 100
+```
+
+The page should therefore show:
+
+```text
+OVER
+1  2  3  4  5  6  7
+
+UNDER
+8  7  6  5  4  3  2  1
+```
+
+and automatically highlight the strongest barrier.
+
+---
+
+# 8. Entry digit logic
+
+For digit contracts, the engine should produce:
+
+```text
+ENTRY DIGIT
+```
+
+but only when there is sufficient evidence.
+
+For example:
+
+```text
+Market: 1HZ100V
+Contract: MATCH
+Entry Digit: 7
+Score: 84
+Runs: 3
+Entry: NEXT ELIGIBLE TICK
+```
+
+The entry digit should be derived from:
+
+```text
+1000T digit structure
++
+100T concentration
++
+50T persistence
++
+20T recurrence
++
+10T latest behaviour
+```
+
+Not simply:
+
+```text
+latest digit = entry digit
+```
+
+---
+
+# 9. Match logic
+
+MATCH needs much stronger conditions than ODD/EVEN.
+
+Use:
+
+```text
+target digit concentration
++
+repeat count
++
+same-digit recurrence
++
+short-window persistence
++
+absence of conflicting transition
+```
+
+Example:
+
+```text
+Digit 7
+
+100T = 14%
+50T  = 16%
+20T  = 20%
+10T  = 30%
+
+Previous recurrence = 3
+```
+
+Then:
+
+```text
+MATCH 7
+```
+
+can become a candidate.
+
+But if:
+
+```text
+10T = 30%
+20T = 12%
+50T = 10%
+100T = 10%
+```
+
+the system should recognize that as a short-term spike and **not automatically enter**.
+
+---
+
+# 10. Differs logic
+
+DIFFERS should work against the strongest repeated target.
+
+For example:
+
+```text
+Dominant digit = 7
+7 concentration = unusually high
+repeated 7 pattern detected
+```
+
+The system can generate:
+
+```text
+DIFFERS 7
+```
+
+but only when the concentration is sufficiently high and the recurrence engine indicates that the target has become over-concentrated.
+
+This is particularly important because MATCH and DIFFERS should **not simply be opposites selected from one percentage**.
+
+---
+
+# 11. Rise / Fall engine
+
+Use actual tick-to-tick price movement.
+
+```text
+Rise =
+number of upward transitions
+/
+all directional transitions
+
+Fall =
+number of downward transitions
+/
+all directional transitions
+```
+
+Then compare:
+
+```text
+50T
+20T
+10T
+```
+
+Example:
+
+```text
+50T RISE = 58%
+20T RISE = 62%
+10T RISE = 70%
+```
+
+→ RISE candidate.
+
+But:
+
+```text
+50T RISE = 60%
+20T FALL = 55%
+10T RISE = 71%
+```
+
+→ conflict → WAIT.
+
+---
+
+# 12. Only Up / Only Down
+
+Treat these as a separate **directional persistence engine**, not simply another name for Rise/Fall.
+
+Require:
+
+```text
+direction persistence
++
+short-window confirmation
++
+low reversal frequency
++
+sufficient directional edge
+```
+
+Example:
+
+```text
+UP persistence
+50T = 63%
+20T = 68%
+10T = 72%
+
+reversal rate = low
+```
+
+Then:
+
+```text
+ONLY UP
+```
+
+becomes eligible.
+
+---
+
+# 13. High / Low Tick
+
+For High/Low Tick style contracts, the engine should inspect the recent tick sequence and determine:
+
+```text
+highest recent tick
+lowest recent tick
+relative position
+direction
+volatility
+reversal frequency
+```
+
+Deriv's current proposal API exposes `TICKHIGH` and `TICKLOW` contract types as well as the digit, higher/lower and other contract types. ([Deriv API][2])
+
+---
+
+# 14. Pattern-flow engine
+
+This is one of the most important parts of your system.
+
+Store:
+
+```text
+last 10 digits
+last 20 digits
+last 50 digits
+last 100 digits
+```
+
+and derive:
+
+```text
+OOOO
+EEEE
+OEOE
+EOEO
+OOEE
+EEOO
+7777
+1234
+9876
+etc.
+```
+
+Then calculate:
+
+```text
+pattern frequency
+pattern recurrence
+pattern age
+pattern continuation
+pattern failure
+```
+
+Example:
+
+```text
+Recent:
+7 7 7 2 7 7 7
+```
+
+The engine should recognize:
+
+```text
+7 recurrence
+```
+
+but **not assume the next tick must be 7**.
+
+Instead it asks:
+
+```text
+Has this pattern historically continued?
+Has it historically broken?
+What is the current transition probability?
+Does 100T/50T/20T agree?
+```
+
+---
+
+# 15. Entropy / concentration filter
+
+This is your **quality filter**.
+
+If the distribution is approximately:
+
+```text
+0 = 10%
+1 = 10%
+2 = 10%
+...
+9 = 10%
+```
+
+then there is little digit concentration.
+
+The engine should return:
+
+```text
+NO CLEAN DIGIT EDGE
+```
+
+Conversely:
+
+```text
+7 = 16%
+3 = 14%
+5 = 13%
+others lower
+```
+
+creates a stronger candidate environment.
+
+---
+
+# 16. Entry-point engine
+
+The most important rule:
+
+### The signal should NOT simply say "BUY NOW."
+
+It should generate:
+
+```text
+MARKET
+CONTRACT
+BARRIER
+ENTRY DIGIT
+ENTRY CONDITION
+ENTRY POINT
+RUN COUNT
+SCORE
+REASON
+```
+
+Example:
+
+```text
+━━━━━━━━━━━━━━━━━━━━━━
+MARK SYN TRADER SIGNAL
+━━━━━━━━━━━━━━━━━━━━━━
+
+MARKET
+1HZ100V
+
+SIGNAL
+OVER 2
+
+BARRIER
+2
+
+ENTRY
+NEXT ELIGIBLE TICK
+
+CONFIRMATION
+1000T ✓
+100T   ✓
+50T    ✓
+20T    ✓
+10T    ✓
+
+SCORE
+86%
+
+RUNS
+3
+
+STATUS
+ENTRY NOW
+━━━━━━━━━━━━━━━━━━━━━━
+```
+
+---
+
+# 17. Entry confirmation state machine
+
+Use:
+
+```text
+WAIT
+ ↓
+WATCH
+ ↓
+CONFIRMING
+ ↓
+READY
+ ↓
+ENTRY NOW
+ ↓
+RUNNING
+ ↓
+COMPLETE
+```
+
+If the market loses confirmation:
+
+```text
+READY
+ ↓
+INVALIDATED
+ ↓
+WAIT
+```
+
+This prevents the app from sending an old signal after the market has changed.
+
+---
+
+# 18. Run-count engine: 1–10
+
+The signal page should not always say 10 runs.
+
+Use:
+
+```text
+Score 74–77 → 1 run
+Score 78–81 → 2 runs
+Score 82–84 → 3 runs
+Score 85–87 → 4 runs
+Score 88–89 → 5 runs
+Score 90–91 → 6 runs
+Score 92–93 → 7 runs
+Score 94–95 → 8 runs
+Score 96–97 → 9 runs
+Score 98–99 → 10 runs
+```
+
+But apply additional guards:
+
+```text
+IF conflict = true
+    runs = 0
+
+IF entropy too high
+    runs = 0
+
+IF data < 1000 ticks
+    no ENTRY NOW
+
+IF short-window reversal
+    reduce runs
+
+IF previous losses exceed limit
+    runs = 0
+
+IF signal becomes invalid
+    stop
+```
+
+So **score is not probability**. It is a setup-quality score.
+
+---
+
+# 19. Loss/recovery logic
+
+Keep your earlier rule:
+
+```text
+Maximum consecutive losses = 3
+```
+
+After a loss:
+
+```text
+LOSS #1
+↓
+recheck same setup
+```
+
+After another:
+
+```text
+LOSS #2
+↓
+re-analyze
+```
+
+After:
+
+```text
+LOSS #3
+```
+
+the system should:
+
+```text
+STOP
+CLEAR ENTRY
+RESCAN MARKET
+LOOK FOR NEW SETUP
+```
+
+No uncontrolled martingale.
+
+---
+
+# 20. Market switching logic
+
+If:
+
+```text
+Market A = 82
+Market B = 91
+Market C = 77
+```
+
+the signal engine should move to:
+
+```text
+Market B
+```
+
+unless B has:
+
+```text
+high entropy
+conflicting windows
+unsupported contract
+stale ticks
+unstable transition
+```
+
+Then it moves to the next valid market.
+
+---
+
+# 21. Pairing mechanism
+
+The new **Mark Syn Trader Signal** page uses a pairing code concept:
+
+```text
+SIGNAL PAGE
+     │
+     │ Pair code: X7K92Q
+     │
+     ▼
+REALTIME PAIR CHANNEL
+     │
+     ▼
+MARKSYNTRADER
+```
+
+Both sides subscribe to:
+
+```text
+mark-syn-signal:X7K92Q
+```
+
+Messages can be:
+
+```text
+SIGNAL
+LOAD_BOT
+ACK
+BOT_READY
+ENTRY_UPDATE
+CANCEL_SIGNAL
+STOP_BOT
+TRADE_RESULT
+```
+
+This is better than relying on the browser's local network because the pairing channel can connect the two app surfaces through the application's realtime backend.
+
+The AppDeploy realtime architecture supports persistent WebSocket connections, connection IDs, entity subscriptions and server-side updates, which is what I used for this pairing design.
+
+---
+
+# 22. Signal → Trading App response
+
+The signal page sends:
+
+```json
+{
+  "type": "SIGNAL",
+  "market": "1HZ100V",
+  "contract": "DIGITOVER",
+  "barrier": "2",
+  "entryDigit": "3",
+  "entryPoint": "NEXT_ELIGIBLE_TICK",
+  "score": 86,
+  "runs": 3
+}
+```
+
+The trading app responds:
+
+```json
+{
+  "type": "ACK",
+  "status": "BOT_READY",
+  "market": "1HZ100V",
+  "contract": "DIGITOVER",
+  "barrier": "2"
+}
+```
+
+Then:
+
+```text
+Signal page
+     ↓
+LOAD_BOT
+     ↓
+Trading app
+     ↓
+Bot configuration loaded
+     ↓
+WAIT FOR ENTRY
+     ↓
+ENTRY CONDITION TRUE
+     ↓
+PROPOSAL
+     ↓
+BUY
+```
+
+Deriv's API explicitly separates obtaining a proposal from buying a contract, and the buy operation requires an authenticated session. ([Deriv API][2])
+
+---
+
+# 23. Bot mapping
+
+The signal engine should automatically choose the bot:
+
+```text
+ODD
+→ Odd Bias Bot
+
+EVEN
+→ Even Bias Bot
+
+OVER / UNDER
+→ Barrier Distribution Bot
+
+RISE / FALL
+→ Directional Tick Bot
+
+MATCH
+→ Match Pattern Bot
+
+DIFFERS
+→ Differs Pattern Bot
+
+ONLY UP
+→ Up Persistence Bot
+
+ONLY DOWN
+→ Down Persistence Bot
+
+HIGH TICK
+→ High Tick Bot
+
+LOW TICK
+→ Low Tick Bot
+```
+
+Then:
+
+```text
+LOAD BOT
+```
+
+passes the entire configuration to the trading app.
+
+---
+
+# 24. Bot must revalidate the signal
+
+This is critical.
+
+Do **not** allow:
+
+```text
+Signal generated at 13:40:01
+Bot executes at 13:40:15
+```
+
+without checking the market again.
+
+Instead:
+
+```text
+SIGNAL
+ ↓
+PAIR
+ ↓
+BOT RECEIVES
+ ↓
+RECHECK 10T
+ ↓
+RECHECK 20T
+ ↓
+CONFIRM CURRENT DIGIT
+ ↓
+CONFIRM CURRENT CONTRACT
+ ↓
+CONFIRM BARRIER
+ ↓
+ENTRY
+```
+
+If the signal changed:
+
+```text
+CANCEL OLD SIGNAL
+```
+
+---
+
+# 25. Deriv execution pipeline
+
+The actual authenticated trading layer should use:
+
+```text
+active_symbols
+      ↓
+ticks_history
+      ↓
+ticks subscription
+      ↓
+contracts_for
+      ↓
+proposal
+      ↓
+buy
+      ↓
+proposal_open_contract
+      ↓
+result
+```
+
+Deriv's current API provides `ticks_history` for historical ticks, `ticks` for realtime ticks, `contracts_for` for available contracts on a symbol, `proposal` for pricing, `buy` for purchasing, and `proposal_open_contract` for monitoring an open contract. ([Deriv API][1])
+
+---
+
+# 26. The final signal card
+
+The new page should ultimately give you something like:
+
+```text
+╔════════════════════════════════════╗
+║      MARK SYN TRADER SIGNAL        ║
+╠════════════════════════════════════╣
+║ BEST MARKET                        ║
+║ 1HZ100V                            ║
+║                                    ║
+║ CONTRACT                           ║
+║ OVER                               ║
+║                                    ║
+║ BARRIER                            ║
+║ 2                                  ║
+║                                    ║
+║ DISTRIBUTION                       ║
+║ OVER 2 = 81.4%                     ║
+║                                    ║
+║ ENTRY DIGIT                        ║
+║ 3                                  ║
+║                                    ║
+║ ENTRY POINT                        ║
+║ NEXT ELIGIBLE TICK                 ║
+║                                    ║
+║ CONFIRMATION                       ║
+║ 1000 ✓  100 ✓  50 ✓  20 ✓  10 ✓  ║
+║                                    ║
+║ SCORE                              ║
+║ 86%                                ║
+║                                    ║
+║ RECOMMENDED RUNS                   ║
+║ 3                                  ║
+║                                    ║
+║ STATUS                             ║
+║ 🟢 ENTRY NOW                       ║
+╠════════════════════════════════════╣
+║ [SEND SIGNAL] [LOAD BOT] [PAIR]   ║
+╚════════════════════════════════════╝
+```
+
+## 27. Important accuracy rule
+
+I would **not** design this as a system that claims it can predict Deriv's next tick "accurately" with certainty. The correct engineering target is:
+
+> **maximize signal quality through multi-window confirmation, reject ambiguous conditions, measure live performance, and never convert a setup score into a guaranteed win probability.**
+
+Your existing app already has the right foundation for this because it has the live WebSocket, 1,000-tick history, digit distribution, parity, barriers, rise/fall, recurrence and market ranking. The new **Mark Syn Trader Signal** layer turns those separate analyses into one coordinated decision and bot-routing system.
+
+I also preserved the distinction between **analysis** and **authenticated real-money execution**: the public Deriv feed can supply the market data, but the actual `buy` operation requires the user's authenticated trading connection. ([Deriv API][3])
+
+[1]: https://developers.deriv.com/docs/data/ticks/?utm_source=chatgpt.com "Ticks Stream — WebSocket API | Deriv API"
+[2]: https://developers.deriv.com/docs/trading/proposal/?utm_source=chatgpt.com "Price Proposal — WebSocket API | Deriv API"
+[3]: https://developers.deriv.com/docs/intro/api-overview/?utm_source=chatgpt.com "API Overview | Deriv API"
