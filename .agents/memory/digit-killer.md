@@ -18,6 +18,9 @@ Session key is `dk_session_v2`. Stored as `{ session, ts }` in `sessionStorage`.
 `AHMED2005` — checked in both `auth-context.tsx` (client) and `users.ts` (server via `x-admin-pin` header).
 
 ## WebSocket
+- All real-time market consumers share one public Deriv WebSocket. Subscriptions are deduplicated by symbol and released when the last consumer leaves.
+- **Why:** Multiple pages can use the same market; a shared feed keeps their data consistent and simplifies market changes and reconnects.
+- **How to apply:** Route new market-data consumers through the shared feed; preserve history rehydration on reconnect and unsubscribe with the returned stream ID.
 Ping every 25s prevents Deriv server from dropping idle connections.
 Always clean up `onclose`/`onerror` handlers before calling `ws.close()` to prevent reconnect loops.
 

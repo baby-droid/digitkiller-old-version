@@ -15,7 +15,7 @@ AI-powered real-time trading analysis dashboard for Deriv synthetic markets by A
 - pnpm workspaces, Node.js 24, TypeScript 5.9
 - Frontend: React + Vite, Tailwind v4, wouter routing
 - API: Express 5, esbuild (CJS bundle)
-- WebSocket: Deriv Binary API — `wss://ws.binaryws.com/websockets/v3?app_id=1089`
+- WebSocket: shared public Deriv market feed — `wss://api.derivws.com/trading/v1/options/ws/public` (no auth)
 
 ## Where things live
 

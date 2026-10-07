@@ -1,5 +1,7 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useAuth, UserRecord } from "@/lib/auth-context";
+import { DERIV_PUBLIC_WS_URL, useDerivWebSocket } from "@/hooks/useDerivWebSocket";
+import { useMarket } from "@/lib/market-context";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
@@ -26,12 +28,29 @@ function SectionCard({ title, icon: Icon, children }: { title: string; icon: Rea
 
 export default function Settings() {
   const { session, isAdmin, logout, users, generateUserId, revokeUser, restoreUser, refreshUsers } = useAuth();
+  const { activeMarket } = useMarket();
+  const { isConnected: feedConnected, historyLoaded: feedHistoryLoaded, error: feedError } =
+    useDerivWebSocket(activeMarket);
   const [newUserName, setNewUserName] = useState("");
   const [generatedId, setGeneratedId] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
   const [wsStatus, setWsStatus] = useState<"idle" | "checking" | "ok" | "fail">("idle");
   const [generating, setGenerating] = useState(false);
   const [generateError, setGenerateError] = useState("");
+
+  useEffect(() => {
+    if (wsStatus !== "checking") return;
+    if (feedError) {
+      setWsStatus("fail");
+      return;
+    }
+    if (feedConnected && feedHistoryLoaded) {
+      setWsStatus("ok");
+      return;
+    }
+    const timeout = window.setTimeout(() => setWsStatus("fail"), 5000);
+    return () => window.clearTimeout(timeout);
+  }, [wsStatus, feedConnected, feedHistoryLoaded, feedError]);
 
   const handleGenerate = async () => {
     if (!newUserName.trim() || generating) return;
@@ -55,11 +74,7 @@ export default function Settings() {
   };
 
   const handleWsCheck = () => {
-    setWsStatus("checking");
-    const ws = new WebSocket("wss://ws.binaryws.com/websockets/v3?app_id=1089");
-    ws.onopen = () => { setWsStatus("ok"); ws.close(); };
-    ws.onerror = () => setWsStatus("fail");
-    setTimeout(() => { if (wsStatus === "checking") setWsStatus("fail"); }, 5000);
+    setWsStatus(feedError ? "fail" : feedConnected && feedHistoryLoaded ? "ok" : "checking");
   };
 
   const handleReload = () => window.location.reload();
@@ -236,7 +251,7 @@ export default function Settings() {
             <div className="flex items-center justify-between">
               <div>
                 <div className="font-bold text-sm">Deriv WebSocket</div>
-                <div className="text-xs text-muted-foreground">wss://ws.binaryws.com/websockets/v3</div>
+                <div className="text-xs text-muted-foreground">{DERIV_PUBLIC_WS_URL}</div>
               </div>
               <div className="flex items-center gap-3">
                 {wsStatus !== "idle" && (
@@ -282,8 +297,7 @@ export default function Settings() {
               { label: "Build Mode", value: import.meta.env.MODE },
               { label: "Base URL", value: import.meta.env.BASE_URL },
               { label: "Admin PIN", value: "AHMED2005 (hardcoded)" },
-              { label: "WebSocket", value: "wss://ws.binaryws.com" },
-              { label: "App ID", value: "1089" },
+              { label: "Public Market Feed", value: "No authentication required" },
               { label: "Signal Validity", value: "20 minutes" },
               { label: "Tick Buffer", value: "500 ticks/market" },
             ].map(({ label, value }) => (

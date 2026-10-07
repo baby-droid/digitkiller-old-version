@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback } from "react";
+import { useCallback, useSyncExternalStore } from "react";
 
 export type TickData = {
   price: number;
@@ -65,9 +65,10 @@ export const CATEGORY_LABELS: Record<MarketCategory, string> = {
 
 export const MARKETS: Market[] = Object.values(MARKETS_BY_CATEGORY).flat();
 
-const WS_URL    = "wss://ws.binaryws.com/websockets/v3?app_id=1089";
+export const DERIV_PUBLIC_WS_URL = "wss://api.derivws.com/trading/v1/options/ws/public";
 const PING_MS   = 25000;
 const MAX_TICKS = 1500;
+const HISTORY_TICKS = 1000;
 
 /**
  * Extract the last digit of a price using the exact pip_size from the API.
@@ -78,178 +79,357 @@ export function extractDigit(price: number, pipSize: number): number {
   return parseInt(digits.slice(-1), 10);
 }
 
-export function useDerivWebSocket(symbol: string) {
-  const [digits,        setDigits]        = useState<TickData[]>([]);
-  const [isConnected,   setIsConnected]   = useState(false);
-  const [historyLoaded, setHistoryLoaded] = useState(false);
-  const wsRef   = useRef<WebSocket | null>(null);
-  const pingRef = useRef<ReturnType<typeof setInterval> | null>(null);
-  const pipRef  = useRef<number>(4);
-  /* generation counter — incremented on every new connection so stale
-     messages from a closed socket are silently discarded */
-  const genRef  = useRef<number>(0);
+export type MarketFeedSnapshot = {
+  digits: TickData[];
+  isConnected: boolean;
+  historyLoaded: boolean;
+  pipSize: number;
+  error: string | null;
+};
 
-  const clearPing = () => {
-    if (pingRef.current) { clearInterval(pingRef.current); pingRef.current = null; }
+type ActiveSubscription = {
+  requestId: number;
+  subscriptionId: string | null;
+};
+
+const marketStates = new Map<string, MarketFeedSnapshot>();
+const marketListeners = new Map<string, Set<() => void>>();
+const activeSubscriptions = new Map<string, ActiveSubscription>();
+const requestSymbols = new Map<number, string>();
+let socket: WebSocket | null = null;
+let pingTimer: ReturnType<typeof setInterval> | null = null;
+let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
+let idleTimer: ReturnType<typeof setTimeout> | null = null;
+let nextRequestId = 1;
+
+function defaultPipSize(symbol: string) {
+  return MARKETS.find((market) => market.symbol === symbol)?.pipSize ?? 4;
+}
+
+function getOrCreateMarketState(symbol: string): MarketFeedSnapshot {
+  let state = marketStates.get(symbol);
+  if (!state) {
+    state = {
+      digits: [],
+      isConnected: false,
+      historyLoaded: false,
+      pipSize: defaultPipSize(symbol),
+      error: null,
+    };
+    marketStates.set(symbol, state);
+  }
+  return state;
+}
+
+export function getMarketFeedSnapshot(symbol: string) {
+  return getOrCreateMarketState(symbol);
+}
+
+function notifyMarket(symbol: string) {
+  marketListeners.get(symbol)?.forEach((listener) => listener());
+}
+
+function updateMarketState(symbol: string, patch: Partial<MarketFeedSnapshot>) {
+  marketStates.set(symbol, { ...getOrCreateMarketState(symbol), ...patch });
+  notifyMarket(symbol);
+}
+
+function activeSymbols() {
+  return [...marketListeners.entries()]
+    .filter(([, listeners]) => listeners.size > 0)
+    .map(([symbol]) => symbol);
+}
+
+function sendForget(subscriptionId: string) {
+  if (socket?.readyState === WebSocket.OPEN) {
+    socket.send(JSON.stringify({ forget: subscriptionId }));
+  }
+}
+
+function subscribeSymbol(symbol: string) {
+  if (socket?.readyState !== WebSocket.OPEN || !marketListeners.get(symbol)?.size) return;
+  if (activeSubscriptions.has(symbol)) return;
+
+  const requestId = nextRequestId++;
+  activeSubscriptions.set(symbol, { requestId, subscriptionId: null });
+  requestSymbols.set(requestId, symbol);
+
+  try {
+    socket.send(JSON.stringify({
+      ticks_history: symbol,
+      end: "latest",
+      count: HISTORY_TICKS,
+      style: "ticks",
+      subscribe: 1,
+      req_id: requestId,
+    }));
+    updateMarketState(symbol, { isConnected: true, historyLoaded: false, error: null });
+  } catch {
+    activeSubscriptions.delete(symbol);
+    requestSymbols.delete(requestId);
+    updateMarketState(symbol, { isConnected: false, error: "Unable to request market data." });
+  }
+}
+
+function clearPingTimer() {
+  if (pingTimer) {
+    clearInterval(pingTimer);
+    pingTimer = null;
+  }
+}
+
+function closeIdleSocket() {
+  if (activeSymbols().length > 0) return;
+  clearPingTimer();
+  if (reconnectTimer) {
+    clearTimeout(reconnectTimer);
+    reconnectTimer = null;
+  }
+  if (socket) {
+    const previousSocket = socket;
+    socket = null;
+    previousSocket.onopen = null;
+    previousSocket.onclose = null;
+    previousSocket.onerror = null;
+    previousSocket.onmessage = null;
+    previousSocket.close();
+  }
+  activeSubscriptions.clear();
+  requestSymbols.clear();
+}
+
+function scheduleReconnect() {
+  if (reconnectTimer || activeSymbols().length === 0) return;
+  reconnectTimer = setTimeout(() => {
+    reconnectTimer = null;
+    connectMarketSocket();
+  }, 3000);
+}
+
+function connectMarketSocket() {
+  if (socket || activeSymbols().length === 0) return;
+  if (idleTimer) {
+    clearTimeout(idleTimer);
+    idleTimer = null;
+  }
+
+  const currentSocket = new WebSocket(DERIV_PUBLIC_WS_URL);
+  socket = currentSocket;
+
+  currentSocket.onopen = () => {
+    if (socket !== currentSocket) return;
+    pingTimer = setInterval(() => {
+      if (currentSocket.readyState === WebSocket.OPEN) {
+        currentSocket.send(JSON.stringify({ ping: 1 }));
+      }
+    }, PING_MS);
+
+    activeSymbols().forEach((symbol) => {
+      updateMarketState(symbol, { isConnected: true, historyLoaded: false, error: null });
+      subscribeSymbol(symbol);
+    });
   };
 
-  const connect = useCallback(() => {
-    /* Tear down any existing socket completely */
-    if (wsRef.current) {
-      wsRef.current.onopen    = null;
-      wsRef.current.onclose   = null;
-      wsRef.current.onerror   = null;
-      wsRef.current.onmessage = null;
-      wsRef.current.close();
-      wsRef.current = null;
+  currentSocket.onmessage = (event: MessageEvent) => {
+    if (socket !== currentSocket) return;
+
+    let data: Record<string, any>;
+    try {
+      data = JSON.parse(event.data as string);
+    } catch {
+      return;
     }
-    clearPing();
 
-    /* Bump generation so any in-flight messages from old socket are ignored */
-    const myGen = ++genRef.current;
+    if (data.msg_type === "history" && data.history) {
+      const requestId = typeof data.req_id === "number" ? data.req_id : undefined;
+      const symbol = (requestId ? requestSymbols.get(requestId) : undefined)
+        ?? data.echo_req?.ticks_history;
+      if (typeof symbol !== "string") return;
 
-    /* Reset state immediately so UI shows clean slate */
-    setDigits([]);
-    setHistoryLoaded(false);
-    setIsConnected(false);
+      const subscriptionId = data.subscription?.id;
+      const active = activeSubscriptions.get(symbol);
+      if (active && (!requestId || active.requestId === requestId)) {
+        active.subscriptionId = typeof subscriptionId === "string" ? subscriptionId : null;
+      }
+      if (requestId) requestSymbols.delete(requestId);
 
-    const ws = new WebSocket(WS_URL);
-    wsRef.current = ws;
-
-    ws.onopen = () => {
-      if (genRef.current !== myGen) { ws.close(); return; }
-      setIsConnected(true);
-
-      pingRef.current = setInterval(() => {
-        if (ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify({ ping: 1 }));
-      }, PING_MS);
-
-      ws.send(JSON.stringify({
-        ticks_history: symbol,
-        end: "latest",
-        count: 1000,
-        style: "ticks",
-        subscribe: 1,
-      }));
-    };
-
-    ws.onmessage = (event: MessageEvent) => {
-      /* Discard messages that belong to a previous market */
-      if (genRef.current !== myGen) return;
-
-      const data = JSON.parse(event.data as string);
-
-      if (data.msg_type === "history" && data.history) {
-        if (typeof data.pip_size === "number") pipRef.current = data.pip_size;
-        const pip = pipRef.current;
-        const { prices, times } = data.history as { prices: number[]; times: number[] };
-        const ticks: TickData[] = prices.map((p, i) => ({
-          price: p, digit: extractDigit(p, pip), time: times[i],
-        }));
-        setDigits(ticks);
-        setHistoryLoaded(true);
+      if (!marketListeners.get(symbol)?.size) {
+        if (typeof subscriptionId === "string") sendForget(subscriptionId);
+        activeSubscriptions.delete(symbol);
         return;
       }
 
-      if (data.msg_type === "tick" && data.tick) {
-        if (typeof data.tick.pip_size === "number") pipRef.current = data.tick.pip_size;
-        const pip   = pipRef.current;
-        const price = data.tick.quote as number;
-        const time  = data.tick.epoch as number;
-        const digit = extractDigit(price, pip);
-        setDigits((prev) => {
-          const next = [...prev, { price, digit, time }];
-          return next.length > MAX_TICKS ? next.slice(-MAX_TICKS) : next;
+      const pipSize = typeof data.pip_size === "number"
+        ? data.pip_size
+        : getOrCreateMarketState(symbol).pipSize;
+      const prices = Array.isArray(data.history.prices) ? data.history.prices : [];
+      const times = Array.isArray(data.history.times) ? data.history.times : [];
+      const digits: TickData[] = prices.map((rawPrice: number | string, index: number) => {
+        const price = Number(rawPrice);
+        return {
+          price,
+          digit: extractDigit(price, pipSize),
+          time: Number(times[index] ?? 0),
+        };
+      }).filter((tick: TickData) => Number.isFinite(tick.price));
+
+      updateMarketState(symbol, {
+        digits: digits.slice(-MAX_TICKS),
+        isConnected: true,
+        historyLoaded: true,
+        pipSize,
+        error: null,
+      });
+      return;
+    }
+
+    if (data.msg_type === "tick" && data.tick) {
+      const symbol = data.tick.symbol as string | undefined;
+      if (!symbol || !marketListeners.get(symbol)?.size) return;
+
+      const active = activeSubscriptions.get(symbol);
+      const subscriptionId = data.subscription?.id;
+      if (active && typeof subscriptionId === "string") active.subscriptionId = subscriptionId;
+
+      const pipSize = typeof data.tick.pip_size === "number"
+        ? data.tick.pip_size
+        : getOrCreateMarketState(symbol).pipSize;
+      const price = Number(data.tick.quote);
+      if (!Number.isFinite(price)) return;
+      const tick: TickData = {
+        price,
+        digit: extractDigit(price, pipSize),
+        time: Number(data.tick.epoch ?? Date.now() / 1000),
+      };
+      const previous = getOrCreateMarketState(symbol);
+      const digits = [...previous.digits, tick].slice(-MAX_TICKS);
+      updateMarketState(symbol, {
+        digits,
+        isConnected: true,
+        pipSize,
+        error: null,
+      });
+      return;
+    }
+
+    if (data.error) {
+      const requestId = typeof data.req_id === "number" ? data.req_id : undefined;
+      const symbol = (requestId ? requestSymbols.get(requestId) : undefined)
+        ?? data.echo_req?.ticks_history
+        ?? data.echo_req?.ticks;
+      if (typeof symbol === "string") {
+        if (requestId) requestSymbols.delete(requestId);
+        activeSubscriptions.delete(symbol);
+        updateMarketState(symbol, {
+          isConnected: true,
+          historyLoaded: false,
+          error: String(data.error.message ?? "Market data request failed."),
         });
       }
-    };
+    }
+  };
 
-    ws.onclose = () => {
-      if (genRef.current !== myGen) return;
-      setIsConnected(false);
-      clearPing();
-      setTimeout(connect, 3000);
-    };
+  currentSocket.onclose = () => {
+    if (socket !== currentSocket) return;
+    socket = null;
+    clearPingTimer();
+    activeSubscriptions.clear();
+    requestSymbols.clear();
+    activeSymbols().forEach((symbol) => {
+      updateMarketState(symbol, { isConnected: false, historyLoaded: false });
+    });
+    scheduleReconnect();
+  };
 
-    ws.onerror = () => {
-      clearPing();
-      ws.close();
-    };
-  }, [symbol]);
+  currentSocket.onerror = () => {
+    if (socket === currentSocket) {
+      clearPingTimer();
+      currentSocket.close();
+    }
+  };
+}
 
-  useEffect(() => {
-    connect();
-    return () => {
-      /* Invalidate current generation so all handlers become no-ops */
-      genRef.current++;
-      clearPing();
-      if (wsRef.current) {
-        wsRef.current.onopen    = null;
-        wsRef.current.onclose   = null;
-        wsRef.current.onerror   = null;
-        wsRef.current.onmessage = null;
-        wsRef.current.close();
-        wsRef.current = null;
-      }
-    };
-  }, [connect]);
+export function subscribeToMarket(symbol: string, listener: () => void) {
+  if (idleTimer) {
+    clearTimeout(idleTimer);
+    idleTimer = null;
+  }
 
-  const lastDigit    = digits.length > 0 ? digits[digits.length - 1].digit : null;
-  const currentPrice = digits.length > 0 ? digits[digits.length - 1].price : null;
+  const listeners = marketListeners.get(symbol) ?? new Set<() => void>();
+  const isFirstListener = listeners.size === 0;
 
-  return { digits, lastDigit, currentPrice, isConnected, historyLoaded, pipSize: pipRef.current };
+  if (isFirstListener) {
+    marketStates.set(symbol, {
+      digits: [],
+      isConnected: socket?.readyState === WebSocket.OPEN,
+      historyLoaded: false,
+      pipSize: defaultPipSize(symbol),
+      error: null,
+    });
+  }
+
+  listeners.add(listener);
+  marketListeners.set(symbol, listeners);
+  connectMarketSocket();
+  subscribeSymbol(symbol);
+
+  let released = false;
+  return () => {
+    if (released) return;
+    released = true;
+    const currentListeners = marketListeners.get(symbol);
+    currentListeners?.delete(listener);
+    if (currentListeners?.size) return;
+    marketListeners.delete(symbol);
+
+    const active = activeSubscriptions.get(symbol);
+    if (active?.subscriptionId) {
+      sendForget(active.subscriptionId);
+      activeSubscriptions.delete(symbol);
+      requestSymbols.delete(active.requestId);
+    } else if (active) {
+      // The history response carries the subscription id; forget it as soon
+      // as it arrives if this symbol is no longer in use.
+      activeSubscriptions.set(symbol, active);
+    }
+
+    updateMarketState(symbol, {
+      digits: [],
+      isConnected: false,
+      historyLoaded: false,
+      pipSize: defaultPipSize(symbol),
+      error: null,
+    });
+
+    if (activeSymbols().length === 0 && !idleTimer) {
+      idleTimer = setTimeout(() => {
+        idleTimer = null;
+        closeIdleSocket();
+      }, 1200);
+    }
+  };
+}
+
+export function useDerivWebSocket(symbol: string) {
+  const subscribe = useCallback(
+    (listener: () => void) => subscribeToMarket(symbol, listener),
+    [symbol],
+  );
+  const getSnapshot = useCallback(() => getMarketFeedSnapshot(symbol), [symbol]);
+  const snapshot = useSyncExternalStore(subscribe, getSnapshot, getSnapshot);
+  const lastTick = snapshot.digits[snapshot.digits.length - 1];
+
+  return {
+    ...snapshot,
+    lastDigit: lastTick?.digit ?? null,
+    currentPrice: lastTick?.price ?? null,
+  };
 }
 
 export type PriceData = { price: number; time: number };
 
 export function useForexWebSocket(symbol: string) {
-  const [prices,      setPrices]      = useState<PriceData[]>([]);
-  const [isConnected, setIsConnected] = useState(false);
-  const wsRef   = useRef<WebSocket | null>(null);
-  const pingRef = useRef<ReturnType<typeof setInterval> | null>(null);
-
-  const clearPing = () => {
-    if (pingRef.current) { clearInterval(pingRef.current); pingRef.current = null; }
-  };
-
-  const connect = useCallback(() => {
-    if (wsRef.current) { wsRef.current.onclose = null; wsRef.current.close(); wsRef.current = null; }
-    clearPing();
-    const ws = new WebSocket(WS_URL);
-    wsRef.current = ws;
-
-    ws.onopen = () => {
-      setIsConnected(true);
-      setPrices([]);
-      pingRef.current = setInterval(() => {
-        if (ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify({ ping: 1 }));
-      }, PING_MS);
-      ws.send(JSON.stringify({ ticks_history: symbol, end: "latest", count: 500, style: "ticks", subscribe: 1 }));
-    };
-
-    ws.onmessage = (event: MessageEvent) => {
-      const data = JSON.parse(event.data as string);
-      if (data.msg_type === "history" && data.history) {
-        const { prices: ps, times: ts } = data.history as { prices: number[]; times: number[] };
-        setPrices(ps.map((p, i) => ({ price: p, time: ts[i] })));
-        return;
-      }
-      if (data.msg_type === "tick" && data.tick) {
-        const price = data.tick.quote as number;
-        const time  = data.tick.epoch as number;
-        setPrices((prev) => { const next = [...prev, { price, time }]; return next.length > 1000 ? next.slice(-1000) : next; });
-      }
-    };
-
-    ws.onclose = () => { setIsConnected(false); clearPing(); setTimeout(connect, 3000); };
-    ws.onerror = () => { clearPing(); ws.close(); };
-  }, [symbol]);
-
-  useEffect(() => {
-    connect();
-    return () => { clearPing(); if (wsRef.current) { wsRef.current.onclose = null; wsRef.current.close(); wsRef.current = null; } };
-  }, [connect]);
-
-  const currentPrice = prices.length > 0 ? prices[prices.length - 1].price : null;
-  return { prices, currentPrice, isConnected };
+  const marketData = useDerivWebSocket(symbol);
+  const prices: PriceData[] = marketData.digits.map(({ price, time }) => ({ price, time }));
+  return { prices, currentPrice: marketData.currentPrice, isConnected: marketData.isConnected };
 }
