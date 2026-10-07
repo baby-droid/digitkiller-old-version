@@ -46,7 +46,7 @@ function clamp(value: number, min: number, max: number) {
 }
 
 function suggestedAttempts(strength: number) {
-  return clamp(Math.round((strength - 50) / 5), 1, 10);
+  return clamp(Math.round((strength - 50) / 3.5), 1, 10);
 }
 
 function signal(
@@ -110,14 +110,14 @@ export function buildMarkSignals(
     if (evenRate >= 52 && lastDigit % 2 === 1) {
       results.push(signal(
         market.symbol, market.name, "EVEN", 53 + (evenRate - 50) * 1.5,
-        "Enter EVEN after an odd digit prints; otherwise wait.",
+        `Entry condition met: last digit ${lastDigit} is odd; consider EVEN on the next tick.`,
         `Even digits appeared ${evenRate.toFixed(1)}% of the last ${count} ticks.`,
         lastDigit, count,
       ));
     } else if (oddRate >= 52 && lastDigit % 2 === 0) {
       results.push(signal(
         market.symbol, market.name, "ODD", 53 + (oddRate - 50) * 1.5,
-        "Enter ODD after an even digit prints; otherwise wait.",
+        `Entry condition met: last digit ${lastDigit} is even; consider ODD on the next tick.`,
         `Odd digits appeared ${oddRate.toFixed(1)}% of the last ${count} ticks.`,
         lastDigit, count,
       ));

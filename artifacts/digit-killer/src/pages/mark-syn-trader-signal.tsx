@@ -37,7 +37,7 @@ function makeSignalText(signal: MarkSignal, attempts: number) {
     `Market: ${signal.marketName} (${signal.symbol})`,
     `Signal: ${signalLabel(signal.kind)}`,
     `Entry condition: ${signal.entry}`,
-    `Recommended attempts: ${signal.attempts}`,
+    `Recommended attempts: ${attempts}`,
     `Maximum attempts selected: ${attempts}`,
     `Strength: ${signal.strength}%`,
     `Last digit: ${signal.lastDigit ?? "Unavailable"}`,
@@ -60,6 +60,7 @@ export default function MarkSynTraderSignal() {
     [allSignals, kind],
   );
   const bestSignal = candidates[0];
+  const recommendedAttempts = bestSignal ? Math.min(bestSignal.attempts, maxAttempts) : 0;
   const snapshots = Object.keys(marketsData).map((symbol) => getMarketFeedSnapshot(symbol));
   const connectedCount = snapshots.filter((feed) => feed.isConnected).length;
   const historyCount = snapshots.filter((feed) => feed.historyLoaded).length;
@@ -70,7 +71,7 @@ export default function MarkSynTraderSignal() {
   const copySignal = async () => {
     if (!bestSignal) return;
     try {
-      await navigator.clipboard.writeText(makeSignalText(bestSignal, maxAttempts));
+      await navigator.clipboard.writeText(makeSignalText(bestSignal, recommendedAttempts));
       setCopyState("copied");
       window.setTimeout(() => setCopyState("idle"), 2200);
     } catch {
@@ -167,7 +168,7 @@ export default function MarkSynTraderSignal() {
                     <div className="mt-1 font-mono text-xs text-muted-foreground" data-testid="text-market-symbol">{bestSignal.symbol}</div>
                   </div>
                   <div className="min-w-[104px] rounded-md border border-primary/20 bg-background/50 px-3 py-2 text-right">
-                    <div className="font-mono text-[9px] uppercase tracking-widest text-muted-foreground">Strength</div>
+                    <div className="font-mono text-[9px] uppercase tracking-widest text-muted-foreground">Setup strength</div>
                     <div className="font-mono text-2xl font-bold text-primary" data-testid="text-signal-strength">{bestSignal.strength}<span className="text-sm">%</span></div>
                   </div>
                 </div>
@@ -187,7 +188,7 @@ export default function MarkSynTraderSignal() {
                   <div className="rounded-md border border-border/80 bg-background/55 p-3" data-testid="data-attempts">
                     <div className="text-[9px] font-bold uppercase tracking-[0.15em] text-muted-foreground">Attempts</div>
                     <div className="mt-1.5 flex items-baseline gap-2 font-mono">
-                      <span className="text-lg font-bold text-foreground">{bestSignal.attempts}</span>
+                      <span className="text-lg font-bold text-foreground">{recommendedAttempts}</span>
                       <span className="text-[10px] text-muted-foreground">recommended</span>
                       <span className="ml-auto text-xs text-primary">cap {maxAttempts}</span>
                     </div>
@@ -301,7 +302,7 @@ export default function MarkSynTraderSignal() {
               <h2 className="text-xs font-bold uppercase tracking-[0.12em]">Risk note</h2>
             </div>
             <p className="mt-2 text-[11px] leading-relaxed text-muted-foreground">
-              Signals are heuristic observations, not guarantees. Past ticks do not predict outcomes. No trade execution occurs here.
+              Setup strength is a heuristic ranking, not a win probability. Past ticks do not predict outcomes. No trade execution occurs here.
             </p>
           </section>
 

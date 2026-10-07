@@ -210,7 +210,7 @@ function startQueuedHistoryRequests() {
       const requestId = active.requestId;
       const timer = setTimeout(() => {
         const current = activeSubscriptions.get(symbol);
-        if (!current || current.requestId !== requestId || current.subscriptionId !== null) return;
+        if (!current || current.requestId !== requestId || current.startedAt === null) return;
         activeSubscriptions.delete(symbol);
         requestSymbols.delete(requestId);
         requestTimers.delete(requestId);
@@ -345,6 +345,7 @@ function connectMarketSocket() {
       }
       if (active && (!requestId || active.requestId === requestId)) {
         active.subscriptionId = typeof subscriptionId === "string" ? subscriptionId : null;
+        active.startedAt = null;
       }
       if (requestId) requestSymbols.delete(requestId);
 
