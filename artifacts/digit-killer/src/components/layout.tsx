@@ -11,6 +11,7 @@ import {
 } from "lucide-react";
 import {
   MARKETS, MARKETS_BY_CATEGORY, CATEGORY_LABELS, MarketCategory,
+  refreshDerivMarketCatalog, useDerivMarketCatalog,
 } from "@/hooks/useDerivWebSocket";
 import { useMarket } from "@/lib/market-context";
 import { useAuth } from "@/lib/auth-context";
@@ -49,6 +50,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
   const [location]          = useLocation();
   const { activeMarket, setActiveMarket } = useMarket();
   const { session, isAdmin, logout }      = useAuth();
+  const marketCatalog = useDerivMarketCatalog();
   const [activeCategory, setActiveCategory] = useState<MarketCategory>("volatility");
   const [collapsed,   setCollapsed]   = useState(false);
   const [mobileOpen,  setMobileOpen]  = useState(false);
@@ -325,6 +327,25 @@ export function Layout({ children }: { children: React.ReactNode }) {
               ))}
             </div>
           </header>
+        )}
+
+        {marketCatalog.error && (
+          <div
+            className="flex flex-wrap items-center justify-between gap-2 border-b px-4 py-2 text-xs"
+            style={{ borderColor: "#854d0e", background: "rgba(120,53,15,0.18)" }}
+            role="status"
+            data-testid="status-market-catalog"
+          >
+            <span className="text-amber-200">{marketCatalog.error}</span>
+            <button
+              type="button"
+              onClick={refreshDerivMarketCatalog}
+              className="rounded border border-amber-400/40 px-2.5 py-1 font-semibold text-amber-100 hover:bg-amber-300/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-300/60"
+              data-testid="button-retry-market-catalog"
+            >
+              Retry market list
+            </button>
+          </div>
         )}
 
         {/* ── Page content ── */}

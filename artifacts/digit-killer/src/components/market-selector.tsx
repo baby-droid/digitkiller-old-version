@@ -23,7 +23,7 @@ export function MarketSelector({
 }: MarketSelectorProps) {
   const catalog = useDerivMarketCatalog();
   const feed = useDerivWebSocket(value);
-  const historyError = feed.error ?? catalog.error;
+  const historyError = feed.error;
   const historyStatus = feed.historyLoaded
     ? feed.digits.length === 0
       ? "No history returned · waiting for live ticks"
@@ -32,7 +32,9 @@ export function MarketSelector({
         : `1,000 tick history loaded · ${feed.isConnected ? "live" : "reconnecting"}`
     : historyError
       ?? (!catalog.loaded
-        ? "Checking Deriv's active markets…"
+        ? catalog.error
+          ? "Using built-in markets while the catalog retries…"
+          : "Checking Deriv's active markets…"
         : feed.historyPhase === "queued"
           ? "Queued for tick history…"
           : feed.historyPhase === "loading"

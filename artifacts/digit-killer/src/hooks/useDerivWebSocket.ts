@@ -219,7 +219,8 @@ const HISTORY_TICKS = 1000;
 const MAX_HISTORY_REQUESTS = 4;
 const HISTORY_TIMEOUT_MS = 12000;
 const MAX_HISTORY_RETRIES = 2;
-const ACTIVE_SYMBOLS_TIMEOUT_MS = 12000;
+const ACTIVE_SYMBOLS_TIMEOUT_MS = 20000;
+const MAX_CATALOG_RETRY_DELAY_MS = 30000;
 
 /**
  * Extract the last digit of a price using the exact pip_size from the API.
@@ -324,34 +325,28 @@ function clearCatalogTimeout() {
 }
 
 function scheduleCatalogRetry() {
-  if (catalogRetryTimer || catalogRetryCount >= MAX_HISTORY_RETRIES || activeSymbols().length === 0) return;
+  if (catalogRetryTimer || activeSymbols().length === 0) return;
+  const delay = Math.min(2500 * 2 ** catalogRetryCount, MAX_CATALOG_RETRY_DELAY_MS);
   catalogRetryCount += 1;
   catalogRetryTimer = setTimeout(() => {
     catalogRetryTimer = null;
-    if (socket?.readyState === WebSocket.OPEN && !marketCatalogSnapshot.loaded) {
-      requestActiveSymbols();
+    if (activeSymbols().length > 0 && !marketCatalogSnapshot.loaded) {
+      if (socket?.readyState === WebSocket.OPEN) requestActiveSymbols();
+      else connectMarketSocket();
     }
-  }, 2500 * catalogRetryCount);
+  }, delay);
 }
 
 function requestActiveSymbols() {
   if (socket?.readyState !== WebSocket.OPEN) return;
+  if (catalogRequestId !== null) return;
+  if (catalogRetryTimer) clearTimeout(catalogRetryTimer);
+  catalogRetryTimer = null;
   clearCatalogTimeout();
   const requestId = nextRequestId++;
   catalogRequestId = requestId;
   socket.send(JSON.stringify({
     active_symbols: "brief",
-    contract_type: [
-      "DIGITMATCH",
-      "DIGITDIFF",
-      "DIGITOVER",
-      "DIGITUNDER",
-      "DIGITEVEN",
-      "DIGITODD",
-      "CALL",
-      "PUT",
-      "UPORDOWN",
-    ],
     req_id: requestId,
   }));
   catalogTimeoutTimer = setTimeout(() => {
@@ -360,10 +355,21 @@ function requestActiveSymbols() {
     catalogTimeoutTimer = null;
     publishMarketCatalog({
       loaded: false,
-      error: "Deriv's active market list timed out. Retry to check symbols again.",
+      error: "Deriv's active market list timed out. Retrying automatically; built-in markets remain available.",
     });
     scheduleCatalogRetry();
   }, ACTIVE_SYMBOLS_TIMEOUT_MS);
+}
+
+export function refreshDerivMarketCatalog() {
+  if (catalogRetryTimer) clearTimeout(catalogRetryTimer);
+  catalogRetryTimer = null;
+  clearCatalogTimeout();
+  catalogRequestId = null;
+  catalogRetryCount = 0;
+  publishMarketCatalog({ error: null });
+  if (socket?.readyState === WebSocket.OPEN) requestActiveSymbols();
+  else connectMarketSocket();
 }
 
 function acceptActiveSymbols(data: Record<string, any>) {
@@ -470,8 +476,9 @@ function startQueuedHistoryRequests() {
 function subscribeSymbol(symbol: string, priority = 0) {
   if (socket?.readyState !== WebSocket.OPEN || !marketListeners.get(symbol)?.size) return;
   if (activeSubscriptions.has(symbol)) return;
-  if (!marketCatalogSnapshot.loaded) return;
-  if (!activeMarketSymbols.has(symbol)) {
+  // Keep the curated symbols usable while Deriv's catalog is unavailable.
+  // The tick request itself remains authoritative for whether a symbol exists.
+  if (marketCatalogSnapshot.loaded && !activeMarketSymbols.has(symbol)) {
     updateMarketState(symbol, {
       isConnected: true,
       historyLoaded: false,
@@ -575,7 +582,8 @@ function connectMarketSocket() {
     }
 
     if (data.msg_type === "active_symbols") {
-      if (catalogRequestId !== null && data.req_id !== catalogRequestId) return;
+      // Catalog requests all ask for the same data. Accept a delayed response
+      // instead of discarding it because a later retry has already started.
       acceptActiveSymbols(data);
       return;
     }
@@ -675,6 +683,16 @@ function connectMarketSocket() {
 
     if (data.error) {
       const requestId = typeof data.req_id === "number" ? data.req_id : undefined;
+      if (
+        data.echo_req?.active_symbols
+        && requestId !== undefined
+        && (
+          (catalogRequestId !== null && requestId !== catalogRequestId)
+          || (catalogRequestId === null && marketCatalogSnapshot.loaded)
+        )
+      ) {
+        return;
+      }
       if (
         (requestId !== undefined && requestId === catalogRequestId)
         || data.echo_req?.active_symbols
@@ -783,6 +801,9 @@ export function subscribeToMarket(symbol: string, listener: () => void, priority
   listeners.add(listener);
   marketListeners.set(symbol, listeners);
   connectMarketSocket();
+  if (!marketCatalogSnapshot.loaded && socket?.readyState === WebSocket.OPEN) {
+    requestActiveSymbols();
+  }
   subscribeSymbol(symbol, symbolPriorities.get(symbol) ?? priority);
 
   let released = false;

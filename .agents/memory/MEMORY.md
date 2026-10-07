@@ -1,1 +1,2 @@
 - [Digit Killer project](digit-killer.md) — trading dashboard; user data path, auth, WebSocket, new pages, layout patterns
+- [Deriv active-symbol requests](deriv-active-symbols.md) — request an unfiltered brief catalog; avoid legacy digit-contract filters

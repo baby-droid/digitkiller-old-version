@@ -24,6 +24,11 @@ Session key is `dk_session_v2`. Stored as `{ session, ts }` in `sessionStorage`.
 Ping every 25s prevents Deriv server from dropping idle connections.
 Always clean up `onclose`/`onerror` handlers before calling `ws.close()` to prevent reconnect loops.
 
+## Market Catalog
+Request Deriv's `active_symbols` list without the legacy digit-contract `contract_type` filters. The current endpoint's supported contract filter values do not include those old digit contract names; let tick/history requests validate individual symbols.
+**Why:** An invalid catalog filter can prevent the shared market list from loading and block feeds after users switch markets.
+**How to apply:** Keep the catalog request broad, accept late results from identical catalog retries, and keep curated markets usable while the catalog is recovering.
+
 ## New Pages (Standalone Market Selector)
 Matches/Differs, Only Ups/Downs, Rise/Fall, High/Low Tick each have their OWN dark-green market selector panel (not the global layout header).
 **Why:** These pages need independent market selection regardless of what the global market is set to.
