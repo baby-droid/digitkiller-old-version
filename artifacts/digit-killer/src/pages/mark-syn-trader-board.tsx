@@ -4,7 +4,6 @@ import {
   ArrowUpRight,
   Check,
   Copy,
-  LoaderCircle,
   RefreshCw,
   ShieldAlert,
   Wifi,
@@ -16,7 +15,7 @@ import {
   type Market,
   type MarketCategory,
   refreshMarketHistory,
-  useDerivMarketCatalog,
+  useMarketList,
 } from "@/hooks/useDerivWebSocket";
 import { buildMarkSignals, type MarkSignal, type SignalKind } from "@/lib/mark-signal-engine";
 
@@ -88,7 +87,6 @@ function MarketSignalCard({
   market,
   data,
   signal,
-  catalogLoaded,
   copyState,
   maxRuns,
   onCopy,
@@ -96,7 +94,6 @@ function MarketSignalCard({
   market: Market;
   data: ReturnType<typeof useDerivMultiMarket>[string] | undefined;
   signal: MarkSignal | undefined;
-  catalogLoaded: boolean;
   copyState: string | null;
   maxRuns: number;
   onCopy: (signal: MarkSignal, runs: number) => void;
@@ -108,19 +105,17 @@ function MarketSignalCard({
     ? "FEED ISSUE"
     : market.exchangeIsOpen === false
       ? "MARKET CLOSED"
-      : !catalogLoaded
-        ? "CHECKING SYMBOL"
-        : !hasFullHistory
-          ? data?.historyPhase === "queued"
-            ? "QUEUED FOR HISTORY"
-            : data?.historyPhase === "loading"
-              ? "LOADING HISTORY"
-              : data?.historyLoaded
-                ? `COLLECTING ${ticks}/1,000`
-                : "SCANNING"
-          : signal
-            ? signal.classification
-            : "NO TRADE";
+      : !hasFullHistory
+        ? data?.historyPhase === "queued"
+          ? "QUEUED FOR HISTORY"
+          : data?.historyPhase === "loading"
+            ? "LOADING HISTORY"
+            : data?.historyLoaded
+              ? `COLLECTING ${ticks}/1,000`
+              : "SCANNING"
+        : signal
+          ? signal.classification
+          : "NO TRADE";
   const statusColor = data?.error
     ? "text-rose-400"
     : signal?.ready
@@ -264,7 +259,7 @@ function MarketSignalCard({
 
 export default function MarkSynTraderBoard() {
   const marketsData = useDerivMultiMarket();
-  const catalog = useDerivMarketCatalog();
+  const marketList = useMarketList();
   const [tab, setTab] = useState<SignalTab>("parity");
   const [barrierSide, setBarrierSide] = useState<"OVER" | "UNDER">("OVER");
   const [digitSide, setDigitSide] = useState<"MATCHES" | "DIFFERS">("MATCHES");
@@ -274,13 +269,13 @@ export default function MarkSynTraderBoard() {
   const [copyState, setCopyState] = useState<string | null>(null);
 
   const allSignals = useMemo(
-    () => buildMarkSignals(marketsData, catalog.markets),
-    [marketsData, catalog.markets],
+    () => buildMarkSignals(marketsData, marketList.markets),
+    [marketsData, marketList.markets],
   );
   const markets = useMemo(() => {
-    if (marketFilter === "all") return catalog.markets;
-    return catalog.markets.filter((market) => market.category === marketFilter);
-  }, [catalog.markets, marketFilter]);
+    if (marketFilter === "all") return marketList.markets;
+    return marketList.markets.filter((market) => market.category === marketFilter);
+  }, [marketList.markets, marketFilter]);
   const visibleCards = useMemo(() => {
     const selected = markets.map((market) => ({
       market,
@@ -425,7 +420,7 @@ export default function MarkSynTraderBoard() {
                 className="max-w-[150px] bg-transparent text-[10px] font-semibold text-foreground outline-none"
                 data-testid="select-market-category"
               >
-                <option value="all">All active markets</option>
+                <option value="all">All built-in markets</option>
                 {Object.entries(CATEGORY_LABELS).map(([category, label]) => (
                   <option key={category} value={category}>{label}</option>
                 ))}
@@ -435,42 +430,17 @@ export default function MarkSynTraderBoard() {
         </div>
 
         <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-1 border-t border-border/70 pt-3 font-mono text-[9px] text-muted-foreground">
-          <span>{catalog.loaded ? `${catalog.markets.length} active symbols` : "Checking Deriv active symbols…"}</span>
+          <span>{catalog.markets.length} built-in markets</span>
           <span>{fullHistoryCount}/{catalog.markets.length} complete 1,000-tick histories</span>
           <span>{currentSignalCount} ranked candidates in this mode</span>
           {errorCount > 0 && <span className="text-amber-300">{errorCount} feed issue{errorCount === 1 ? "" : "s"}</span>}
-          {catalog.error && (
-            <span className="inline-flex items-center gap-2 text-amber-300" role="status">
-              {catalog.error}
-              <button
-                type="button"
-                onClick={() => refreshMarketHistory(catalog.markets[0]?.symbol ?? "R_10")}
-                className="rounded border border-amber-300/30 px-2 py-0.5 font-bold hover:bg-amber-300/10"
-              >
-                Retry symbols
-              </button>
-            </span>
-          )}
         </div>
       </section>
 
-      {!catalog.loaded && !catalog.error && (
-        <div className="flex items-center gap-2 rounded-lg border border-primary/20 bg-primary/[0.04] px-3 py-2 text-[11px] text-muted-foreground" role="status">
-          <LoaderCircle className="h-3.5 w-3.5 animate-spin text-primary" />
-          Asking Deriv for active symbols before requesting tick histories…
-        </div>
-      )}
-
-      {catalog.error && catalog.markets.length === 0 && (
-        <div className="rounded-lg border border-amber-400/25 bg-amber-400/[0.06] p-4 text-xs text-amber-100" role="alert">
-          The live market list is unavailable. No symbols or signal candidates are being shown as current.
-        </div>
-      )}
-
-      {markets.length === 0 && catalog.loaded ? (
+      {markets.length === 0 ? (
         <div className="rounded-xl border border-dashed border-border p-10 text-center">
-          <p className="text-sm font-semibold">No active symbols in this market group</p>
-          <p className="mt-1 text-xs text-muted-foreground">Choose another group or check the Deriv active-symbol list.</p>
+          <p className="text-sm font-semibold">No built-in markets in this group</p>
+          <p className="mt-1 text-xs text-muted-foreground">Choose another market group.</p>
         </div>
       ) : (
         <section className="grid gap-2.5 sm:grid-cols-2 xl:grid-cols-3" aria-label="Live market signal cards">
@@ -480,7 +450,6 @@ export default function MarkSynTraderBoard() {
               market={market}
               data={data}
               signal={signal}
-              catalogLoaded={catalog.loaded}
               copyState={copyState}
               maxRuns={maxRuns}
               onCopy={handleCopy}

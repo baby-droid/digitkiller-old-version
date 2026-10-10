@@ -2,7 +2,6 @@ import {
   CATEGORY_LABELS,
   MARKETS_BY_CATEGORY,
   type MarketCategory,
-  useDerivMarketCatalog,
   useDerivWebSocket,
 } from "@/hooks/useDerivWebSocket";
 
@@ -21,7 +20,6 @@ export function MarketSelector({
   testId = "select-market",
   label = "Select market",
 }: MarketSelectorProps) {
-  const catalog = useDerivMarketCatalog();
   const feed = useDerivWebSocket(value);
   const historyError = feed.error;
   const historyStatus = feed.historyLoaded
@@ -31,17 +29,13 @@ export function MarketSelector({
         ? `${feed.digits.length.toLocaleString()} / 1,000 ticks · collecting history`
         : `1,000 tick history loaded · ${feed.isConnected ? "live" : "reconnecting"}`
     : historyError
-      ?? (!catalog.loaded
-        ? catalog.error
-          ? "Using built-in markets while the catalog retries…"
-          : "Checking Deriv's active markets…"
-        : feed.historyPhase === "queued"
-          ? "Queued for tick history…"
-          : feed.historyPhase === "loading"
-            ? "Requesting the latest 1,000 ticks…"
-            : feed.isConnected
-              ? "Waiting for a history response…"
-              : "Connecting to Deriv's market feed…");
+      ?? (feed.historyPhase === "queued"
+        ? "Queued for tick history…"
+        : feed.historyPhase === "loading"
+          ? "Requesting the latest 1,000 ticks…"
+          : feed.isConnected
+            ? "Waiting for a history response…"
+            : "Connecting to the public market feed…");
 
   return (
     <div className="space-y-1.5">

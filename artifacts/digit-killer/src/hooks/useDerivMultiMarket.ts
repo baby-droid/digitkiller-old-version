@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import {
   getMarketFeedSnapshot,
-  useDerivMarketCatalog,
+  useMarketList,
   subscribeToMarket,
 } from "./useDerivWebSocket";
 
@@ -21,7 +21,7 @@ export type MarketData = {
 };
 
 export function useDerivMultiMarket() {
-  const { markets } = useDerivMarketCatalog();
+  const { markets } = useMarketList();
   const [marketsData, setMarketsData] = useState<Record<string, MarketData>>(() =>
     markets.reduce((acc, market) => {
       acc[market.symbol] = marketDataFor(market.symbol);
