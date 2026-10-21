@@ -160,7 +160,7 @@ function MarketSignalCard({
         <div className="min-w-0">
           <div className="flex flex-wrap items-center justify-between gap-2">
             {signalPill ? (
-              <span className={`inline-flex rounded-full px-3 py-1.5 text-xs font-black text-white ${signal.ready ? "bg-gradient-to-r from-sky-500 to-blue-700" : "bg-gradient-to-r from-rose-500 to-pink-700"}`}>
+              <span className={`inline-flex rounded-full px-3 py-1.5 text-xs font-black text-white ${signal?.ready ? "bg-gradient-to-r from-sky-500 to-blue-700" : "bg-gradient-to-r from-rose-500 to-pink-700"}`}>
                 {signalPill}
               </span>
             ) : (
@@ -332,7 +332,7 @@ export default function MarkSynTraderBoard() {
             {connectedCount > 0 ? <Wifi className="h-3.5 w-3.5 text-emerald-400" /> : <WifiOff className="h-3.5 w-3.5 text-amber-300" />}
             <span className={`h-1.5 w-1.5 rounded-full ${connectedCount > 0 ? "animate-pulse bg-emerald-400" : "bg-amber-300"}`} />
             {connectedCount > 0 ? "FEED LIVE" : "CONNECTING"}
-            <span className="text-muted-foreground">{connectedCount}/{catalog.markets.length}</span>
+            <span className="text-muted-foreground">{connectedCount}/{marketList.markets.length}</span>
           </div>
           <label className="flex items-center gap-2 rounded-lg border border-border bg-card px-3 py-2 text-[10px]">
             <span className="font-bold uppercase tracking-wide text-muted-foreground">Max runs</span>
@@ -430,8 +430,8 @@ export default function MarkSynTraderBoard() {
         </div>
 
         <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-1 border-t border-border/70 pt-3 font-mono text-[9px] text-muted-foreground">
-          <span>{catalog.markets.length} built-in markets</span>
-          <span>{fullHistoryCount}/{catalog.markets.length} complete 1,000-tick histories</span>
+          <span>{marketList.markets.length} built-in markets</span>
+          <span>{fullHistoryCount}/{marketList.markets.length} complete 1,000-tick histories</span>
           <span>{currentSignalCount} ranked candidates in this mode</span>
           {errorCount > 0 && <span className="text-amber-300">{errorCount} feed issue{errorCount === 1 ? "" : "s"}</span>}
         </div>

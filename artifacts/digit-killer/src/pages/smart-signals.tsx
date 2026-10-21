@@ -339,6 +339,12 @@ const CAT_LABELS: Record<MarketCategory, string> = {
   crash_boom: "Crash · Boom",
   jump:       "Jump",
   bear_bull:  "Bear · Bull",
+  forex: "Forex",
+  indices: "Indices",
+  commodities: "Commodities",
+  cryptocurrencies: "Cryptocurrencies",
+  stocks: "Stocks",
+  other: "Other",
 };
 
 const CAT_COLORS: Record<MarketCategory, string> = {
@@ -346,6 +352,12 @@ const CAT_COLORS: Record<MarketCategory, string> = {
   crash_boom: "bg-red-500/10 text-red-400 border-red-500/30",
   jump:       "bg-yellow-500/10 text-yellow-400 border-yellow-500/30",
   bear_bull:  "bg-green-500/10 text-green-400 border-green-500/30",
+  forex: "bg-emerald-500/10 text-emerald-400 border-emerald-500/30",
+  indices: "bg-violet-500/10 text-violet-400 border-violet-500/30",
+  commodities: "bg-amber-500/10 text-amber-400 border-amber-500/30",
+  cryptocurrencies: "bg-cyan-500/10 text-cyan-400 border-cyan-500/30",
+  stocks: "bg-sky-500/10 text-sky-400 border-sky-500/30",
+  other: "bg-zinc-500/10 text-zinc-400 border-zinc-500/30",
 };
 
 type CategoryFilter = "all" | MarketCategory;
@@ -394,7 +406,9 @@ export default function SmartSignals() {
     : signals.filter((s) => s.category === categoryFilter);
 
   // Count signals per category for badges
-  const catCounts = (Object.keys(MARKETS_BY_CATEGORY) as MarketCategory[]).reduce<Record<string, number>>((acc, cat) => {
+  const visibleCategories = (Object.keys(MARKETS_BY_CATEGORY) as MarketCategory[])
+    .filter((cat) => MARKETS_BY_CATEGORY[cat].length > 0);
+  const catCounts = visibleCategories.reduce<Record<string, number>>((acc, cat) => {
     acc[cat] = signals.filter((s) => s.category === cat).length;
     return acc;
   }, {});
@@ -442,7 +456,7 @@ export default function SmartSignals() {
           )}
         </button>
 
-        {(Object.keys(MARKETS_BY_CATEGORY) as MarketCategory[]).map((cat) => (
+        {visibleCategories.map((cat) => (
           <button
             key={cat}
             onClick={() => setCategoryFilter(cat)}

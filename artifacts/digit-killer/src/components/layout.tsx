@@ -21,6 +21,7 @@ const navItems = [
   { name: "Smart Signals",   href: "/smart-signals",  icon: Sparkles,   badge: "HOT" },
   { name: "Mark Syn Trader Signal", href: "/mark-syn-trader-signal", icon: Activity, badge: "LIVE" },
   { name: "Wide Eye View",   href: "/wide-eye",       icon: Eye },
+  { name: "Under 4 / Under 5 Analyser", href: "/under-4-under-5-analyser", icon: Binary, badge: "LIVE" },
   { name: "Market Scanner",  href: "/scanner",        icon: Activity },
   { name: "AI Signals",      href: "/signals",        icon: Zap },
   { name: "Tick Generator",  href: "/tick-generator", icon: Cpu },
@@ -271,7 +272,9 @@ export function Layout({ children }: { children: React.ReactNode }) {
               >
                 <Menu className="w-5 h-5" />
               </button>
-              {(Object.keys(MARKETS_BY_CATEGORY) as MarketCategory[]).map((cat) => (
+              {(Object.keys(MARKETS_BY_CATEGORY) as MarketCategory[])
+                .filter((cat) => MARKETS_BY_CATEGORY[cat].length > 0)
+                .map((cat) => (
                 <button
                   key={cat}
                   onClick={() => {

@@ -65,6 +65,12 @@ const CURATED_MARKETS_BY_CATEGORY: Record<MarketCategory, Market[]> = {
     { name: "Rng Brk 100", symbol: "RB100",    category: "bear_bull", pipSize: 4 },
     { name: "Rng Brk 200", symbol: "RB200",    category: "bear_bull", pipSize: 4 },
   ],
+  forex: [],
+  indices: [],
+  commodities: [],
+  cryptocurrencies: [],
+  stocks: [],
+  other: [],
 };
 
 const BASE_CATEGORY_LABELS: Record<MarketCategory, string> = {

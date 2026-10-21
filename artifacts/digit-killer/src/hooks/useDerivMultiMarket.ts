@@ -18,6 +18,8 @@ export type MarketData = {
   digits: number[];
   prices: number[];
   frequencies: number[];
+  historyCount: number;
+  historyTicks: ReturnType<typeof getMarketFeedSnapshot>["digits"];
 };
 
 export function useDerivMultiMarket() {
@@ -79,5 +81,7 @@ function marketDataFor(symbol: string): MarketData {
     digits,
     prices: ticks.map((tick) => tick.price),
     frequencies: counts.map((count) => (count / total) * 100),
+    historyCount: snapshot.digits.length,
+    historyTicks: snapshot.digits.slice(-120),
   };
 }

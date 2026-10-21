@@ -31,6 +31,7 @@ import MatchesDiffers from "@/pages/matches-differs";
 import OnlyUpsDowns   from "@/pages/only-ups-downs";
 import RiseFall       from "@/pages/rise-fall";
 import HighLowTick    from "@/pages/high-low-tick";
+import UnderPatternAnalyser from "@/pages/under-4-under-5-analyser";
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -60,6 +61,7 @@ function AppContent() {
         <Route path="/trade-desk"      component={TradeDesk} />
         <Route path="/strategies"      component={Strategies} />
         <Route path="/wide-eye"        component={WideEye} />
+        <Route path="/under-4-under-5-analyser" component={UnderPatternAnalyser} />
         <Route path="/risk-calculator" component={RiskCalculator} />
         <Route path="/learning"        component={AILearning} />
         <Route path="/performance"     component={Performance} />
