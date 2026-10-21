@@ -2,7 +2,9 @@ import {
   CATEGORY_LABELS,
   MARKETS_BY_CATEGORY,
   type MarketCategory,
+  refreshMarketCatalog,
   useDerivWebSocket,
+  useMarketList,
 } from "@/hooks/useDerivWebSocket";
 
 type MarketSelectorProps = {
@@ -21,21 +23,24 @@ export function MarketSelector({
   label = "Select market",
 }: MarketSelectorProps) {
   const feed = useDerivWebSocket(value);
+  const catalog = useMarketList();
   const historyError = feed.error;
-  const historyStatus = feed.historyLoaded
-    ? feed.digits.length === 0
-      ? "No history returned · waiting for live ticks"
-      : feed.digits.length < 1000
-        ? `${feed.digits.length.toLocaleString()} / 1,000 ticks · collecting history`
-        : `1,000 tick history loaded · ${feed.isConnected ? "live" : "reconnecting"}`
+  const historyStatus = catalog.error
+    ?? (!catalog.loaded
+    ? catalog.error ?? "Checking Deriv’s active market list…"
     : historyError
-      ?? (feed.historyPhase === "queued"
-        ? "Queued for tick history…"
-        : feed.historyPhase === "loading"
-          ? "Requesting the latest 1,000 ticks…"
-          : feed.isConnected
-            ? "Waiting for a history response…"
-            : "Connecting to the public market feed…");
+      ?? (feed.historyLoaded
+        ? feed.digits.length < 1000
+          ? `${feed.digits.length.toLocaleString()} / 1,000 ticks received · collecting live history`
+          : `1,000 tick history ready · ${feed.isConnected ? "live" : "reconnecting"}`
+        : feed.historyPhase === "queued"
+          ? `${feed.digits.length.toLocaleString()} / 1,000 ticks · queued for history`
+          : feed.historyPhase === "loading"
+            ? `${feed.digits.length.toLocaleString()} / 1,000 ticks · requesting history`
+            : feed.isConnected
+              ? `${feed.digits.length.toLocaleString()} / 1,000 ticks · waiting for history response`
+              : "Connecting to Deriv’s public market feed…"));
+  const retrySymbols = Boolean(catalog.error);
 
   return (
     <div className="space-y-1.5">
@@ -69,17 +74,17 @@ export function MarketSelector({
         ))}
       </select>
       <div className="flex min-h-4 items-center justify-between gap-2 text-[10px] font-mono" role="status" data-testid={`status-market-history-${value}`}>
-        <span className={feed.historyLoaded && feed.digits.length >= 1000 ? "text-emerald-400" : historyError ? "text-amber-300" : "text-muted-foreground"}>
+        <span className={feed.historyLoaded && feed.digits.length >= 1000 ? "text-emerald-400" : historyError || catalog.error ? "text-amber-300" : "text-muted-foreground"}>
           {historyStatus}
         </span>
-        {historyError && (
+        {(historyError || retrySymbols) && (
           <button
             type="button"
-            onClick={feed.refreshHistory}
+            onClick={retrySymbols ? refreshMarketCatalog : feed.refreshHistory}
             className="shrink-0 rounded border border-amber-400/30 px-2 py-0.5 text-amber-200 transition hover:bg-amber-400/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-300/50"
-            data-testid={`button-retry-market-history-${value}`}
+            data-testid={retrySymbols ? "button-retry-market-catalog" : `button-retry-market-history-${value}`}
           >
-            Retry history
+            {retrySymbols ? "Retry symbols" : "Retry history"}
           </button>
         )}
       </div>

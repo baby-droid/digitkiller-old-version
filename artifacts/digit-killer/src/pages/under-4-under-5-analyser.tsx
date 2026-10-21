@@ -1,6 +1,11 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Activity, AlertTriangle, Check, CircleHelp, Radio, ScanSearch } from "lucide-react";
 import { useUnderPatternScanner, type UnderPatternScanCandidate } from "@/hooks/useUnderPatternScanner";
+import {
+  refreshMarketCatalog,
+  refreshMarketHistory,
+  useDerivMarketCatalog,
+} from "@/hooks/useDerivWebSocket";
 import { classifyDigit, type PatternPerformance, type UnderBarrierAnalysis } from "@/lib/under-pattern-analysis";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -14,12 +19,40 @@ import {
 } from "@/components/ui/select";
 
 const WINDOWS = [100, 50, 20, 10] as const;
+const ENTRY_ALERT_MS = 30_000;
+const MIN_ENTRY_SCORE = 70;
+const MIN_ENTRY_SAMPLES = 8;
+
+type EntryAlertState = {
+  key: string;
+  candidate: UnderPatternScanCandidate;
+  expiresAt: number;
+};
 
 function percent(value: number | null) {
   return value === null ? "—" : `${value.toFixed(1)}%`;
 }
 
-function MarketStatus({ connected, historyLoaded }: { connected: boolean; historyLoaded: boolean }) {
+function MarketStatus({
+  connected,
+  historyLoaded,
+  historyPhase,
+  historyCount,
+  error,
+}: {
+  connected: boolean;
+  historyLoaded: boolean;
+  historyPhase: string;
+  historyCount: number;
+  error: string | null;
+}) {
+  if (error) {
+    return (
+      <Badge variant="outline" className="gap-1.5 border-amber-300 bg-amber-50 text-amber-900">
+        <span className="h-1.5 w-1.5 rounded-full bg-amber-600" /> {error}
+      </Badge>
+    );
+  }
   if (!connected) {
     return (
       <Badge variant="outline" className="gap-1.5 border-rose-300 bg-rose-50 text-rose-800">
@@ -28,10 +61,109 @@ function MarketStatus({ connected, historyLoaded }: { connected: boolean; histor
     );
   }
   return (
-    <Badge variant="outline" className={`gap-1.5 ${historyLoaded ? "border-emerald-300 bg-emerald-50 text-emerald-800" : "border-amber-300 bg-amber-50 text-amber-900"}`}>
-      <span className={`h-1.5 w-1.5 rounded-full ${historyLoaded ? "bg-emerald-600" : "bg-amber-600"}`} />
-      {historyLoaded ? "Live · history ready" : "Live · history loading"}
+    <Badge variant="outline" className={`gap-1.5 ${historyLoaded && historyCount >= 1000 ? "border-emerald-300 bg-emerald-50 text-emerald-800" : "border-amber-300 bg-amber-50 text-amber-900"}`}>
+      <span className={`h-1.5 w-1.5 rounded-full ${historyLoaded && historyCount >= 1000 ? "bg-emerald-600" : "bg-amber-600"}`} />
+      {historyLoaded
+        ? `${historyCount.toLocaleString()} / 1,000 history ticks`
+        : historyPhase === "queued"
+          ? "Queued for history"
+          : historyPhase === "loading"
+            ? "Requesting tick history"
+            : "Checking Deriv symbols"}
     </Badge>
+  );
+}
+
+function entryCandidateKey(candidate: UnderPatternScanCandidate) {
+  return `${candidate.market.symbol}:${candidate.barrier}:${candidate.pattern.pattern}`;
+}
+
+function isHighScoreEntry(candidate: UnderPatternScanCandidate) {
+  const currentPattern = candidate.analysis.currentPattern;
+  return Boolean(
+    candidate.marketData.isConnected
+    && candidate.marketData.historyLoaded
+    && candidate.marketData.historyCount >= 1000
+    && candidate.pattern.meetsSampleGate
+    && candidate.pattern.sampleCount >= MIN_ENTRY_SAMPLES
+    && (candidate.pattern.averagePerformance ?? 0) >= MIN_ENTRY_SCORE
+    && currentPattern?.pattern === candidate.pattern.pattern,
+  );
+}
+
+function EnterNowAlert({ alert, now }: { alert: { candidate: UnderPatternScanCandidate; expiresAt: number }; now: number }) {
+  const { candidate } = alert;
+  const samples = candidate.pattern.windowResults.reduce((sum, result) => sum + result.samples, 0);
+  const primaryHits = candidate.pattern.windowResults.reduce((sum, result) => sum + result.primaryHits, 0);
+  const recoveryHits = candidate.pattern.windowResults.reduce((sum, result) => sum + result.recoveryHits, 0);
+  const primaryMisses = Math.max(0, samples - primaryHits);
+  const recoveryRate = primaryMisses
+    ? (recoveryHits / primaryMisses) * 100
+    : null;
+  const remaining = Math.max(0, alert.expiresAt - now);
+  const secondsLeft = Math.ceil(remaining / 1000);
+  const progress = Math.max(0, Math.min(100, (remaining / ENTRY_ALERT_MS) * 100));
+
+  return (
+    <aside
+      role="alert"
+      aria-live="assertive"
+      aria-label={`Enter now alert for Under ${candidate.barrier}`}
+      className="under-entry-alert fixed right-3 top-3 z-[100] w-[calc(100vw-1.5rem)] max-w-md overflow-hidden rounded-2xl border-2 border-green-600 bg-[#8df0a8] text-black shadow-2xl shadow-green-950/30 sm:right-5 sm:top-5"
+      data-testid="under-entry-notification"
+    >
+      <div className="flex items-start gap-3 p-4 sm:p-5">
+        <div className="grid h-10 w-10 shrink-0 place-items-center rounded-full border-2 border-black/20 bg-green-300 text-black">
+          <Check className="h-5 w-5" />
+        </div>
+        <div className="min-w-0 flex-1">
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="text-[10px] font-black uppercase tracking-[0.15em]">High-score entry window</span>
+            <span className="rounded-full bg-black px-2 py-0.5 text-[9px] font-black uppercase text-[#8df0a8]">
+              ENTER NOW · UNDER {candidate.barrier}
+            </span>
+          </div>
+          <h2 className="mt-1 text-base font-black leading-tight sm:text-lg">
+            {candidate.market.name} <span className="font-mono text-xs font-bold">({candidate.market.symbol})</span>
+          </h2>
+          <p className="mt-2 text-xs font-semibold">
+            Current pattern: <code className="rounded bg-white/70 px-1.5 py-0.5 font-mono text-sm font-black">{candidate.pattern.pattern}</code>
+          </p>
+          <div className="mt-3 grid grid-cols-2 gap-2">
+            <div className="rounded-lg border border-black/10 bg-white/50 p-2">
+              <p className="text-[9px] font-black uppercase tracking-wide">Historical score</p>
+              <p className="mt-0.5 text-lg font-black tabular-nums">{percent(candidate.pattern.averagePerformance)}</p>
+              <p className="text-[9px] font-medium">Pattern rank, not win probability</p>
+            </div>
+            <div className="rounded-lg border border-black/10 bg-white/50 p-2">
+              <p className="text-[9px] font-black uppercase tracking-wide">Recovery after a primary miss</p>
+              <p className="mt-0.5 text-lg font-black tabular-nums">{percent(recoveryRate)}</p>
+              <p className="text-[9px] font-medium">{recoveryHits} of {primaryMisses} historical misses</p>
+            </div>
+          </div>
+          <p className="mt-2 text-[10px] font-semibold leading-relaxed">
+            Recovery means at least one Under digit in follow-up ticks 6–8 after the first 3-tick test misses. It is not guaranteed profit or a reason to increase stake.
+          </p>
+          <div className="mt-3 flex items-center justify-between gap-3 text-[10px] font-black">
+            <span>Next scan in {secondsLeft}s</span>
+            <span>{candidate.pattern.sampleCount} overlapping history samples</span>
+          </div>
+        </div>
+      </div>
+      <div className="h-1.5 bg-black/15">
+        <div className="h-full bg-green-700 transition-[width] duration-200 ease-linear" style={{ width: `${progress}%` }} />
+      </div>
+      <style>{`
+        @keyframes under-entry-glow {
+          0%, 100% { box-shadow: 0 10px 28px rgba(7, 45, 19, .22), 0 0 0 0 rgba(34, 197, 94, .28); }
+          50% { box-shadow: 0 14px 34px rgba(7, 45, 19, .3), 0 0 0 8px rgba(34, 197, 94, .14); }
+        }
+        .under-entry-alert { animation: under-entry-glow 1.6s ease-in-out infinite; }
+        @media (prefers-reduced-motion: reduce) {
+          .under-entry-alert { animation: none; }
+        }
+      `}</style>
+    </aside>
   );
 }
 
@@ -144,7 +276,12 @@ function PatternPanel({ barrier, analysis, selected, isFeedLive, historyReady }:
   const current = analysis?.currentPattern;
   const best = analysis?.bestPattern;
   const currentMatchesBest = Boolean(best && current?.pattern === best.pattern);
-  const entryReady = Boolean(isFeedLive && historyReady && best?.meetsSampleGate && currentMatchesBest);
+  const highScore = Boolean(
+    best?.meetsSampleGate
+    && best.sampleCount >= MIN_ENTRY_SAMPLES
+    && (best.averagePerformance ?? 0) >= MIN_ENTRY_SCORE,
+  );
+  const entryReady = Boolean(isFeedLive && historyReady && highScore && currentMatchesBest);
 
   return (
     <Card className={`overflow-hidden border-slate-200 bg-[#fffefa] shadow-sm ${selected ? "ring-2 ring-teal-700/70" : ""}`}>
@@ -166,7 +303,7 @@ function PatternPanel({ barrier, analysis, selected, isFeedLive, historyReady }:
             {entryReady ? <Check className="mt-0.5 h-4 w-4 shrink-0 text-teal-800" /> : <Activity className="mt-0.5 h-4 w-4 shrink-0 text-slate-500" />}
             <div className="min-w-0 flex-1">
               <p className="text-xs font-semibold uppercase tracking-wide text-slate-700">
-                {entryReady ? "Sample-qualified pattern just completed" : "Live pattern status"}
+                {entryReady ? "High-score pattern just completed" : "Live pattern status"}
               </p>
               <p className="mt-1 text-sm text-slate-600">
                 {best
@@ -178,6 +315,8 @@ function PatternPanel({ barrier, analysis, selected, isFeedLive, historyReady }:
                         ? "Wait for a complete 1,000-tick history before treating a live pattern as entry-ready."
                         : currentMatchesBest && !best.meetsSampleGate
                           ? <>Pattern <code className="rounded bg-white px-1.5 py-0.5 font-mono font-semibold">{best.pattern}</code> matched, but its sample gate is not met. Observe only.</>
+                          : currentMatchesBest && !highScore
+                            ? <>Pattern <code className="rounded bg-white px-1.5 py-0.5 font-mono font-semibold">{best.pattern}</code> matched, but its history score or sample count is below the enter-now threshold.</>
                     : current
                       ? <>Current sequence <code className="rounded bg-white px-1.5 py-0.5 font-mono font-semibold">{current.pattern}</code> is present; it is not the best historical pattern <code className="font-mono font-semibold">{best.pattern}</code>.</>
                       : <>Best historical pattern <code className="rounded bg-white px-1.5 py-0.5 font-mono font-semibold">{best.pattern}</code> has not just completed.</>
@@ -190,7 +329,7 @@ function PatternPanel({ barrier, analysis, selected, isFeedLive, historyReady }:
               <div><p className="text-[10px] uppercase tracking-wide text-slate-500">Best historical</p><p className="mt-0.5 font-mono text-sm font-semibold text-slate-900">{best.pattern}</p></div>
               <div><p className="text-[10px] uppercase tracking-wide text-slate-500">Avg. window rate</p><p className="mt-0.5 font-mono text-sm font-semibold text-slate-900">{percent(best.averagePerformance)}</p></div>
               <div><p className="text-[10px] uppercase tracking-wide text-slate-500">Window samples*</p><p className="mt-0.5 font-mono text-sm font-semibold text-slate-900">{best.sampleCount}</p></div>
-              <div><p className="text-[10px] uppercase tracking-wide text-slate-500">Sample gate</p><p className={`mt-0.5 text-xs font-semibold ${best.meetsSampleGate ? "text-teal-800" : "text-amber-800"}`}>{best.meetsSampleGate ? "Met" : "Low sample count"}</p></div>
+              <div><p className="text-[10px] uppercase tracking-wide text-slate-500">Entry threshold</p><p className={`mt-0.5 text-xs font-semibold ${highScore ? "text-teal-800" : "text-amber-800"}`}>{highScore ? "Met" : "Needs ≥70 score + 8 samples"}</p></div>
             </div>
           )}
           {best && !best.meetsSampleGate && (
@@ -255,19 +394,69 @@ function PatternPanel({ barrier, analysis, selected, isFeedLive, historyReady }:
 }
 
 export default function Under4Under5Analyser() {
-  const { markets, marketsData, analyses, scanBestMarket } = useUnderPatternScanner();
+  const { markets, marketsData, analyses, scanCandidates } = useUnderPatternScanner();
+  const marketCatalog = useDerivMarketCatalog();
   const [selectedSymbol, setSelectedSymbol] = useState(markets[0]?.symbol ?? "");
   const [scanSelection, setScanSelection] = useState<UnderPatternScanCandidate | null>(null);
   const [scanAttempted, setScanAttempted] = useState(false);
+  const [entryAlert, setEntryAlert] = useState<EntryAlertState | null>(null);
+  const [dismissedPatternKeys, setDismissedPatternKeys] = useState<Set<string>>(() => new Set());
+  const [alertNow, setAlertNow] = useState(Date.now());
   const market = markets.find((item) => item.symbol === selectedSymbol) ?? markets[0];
   const data = market ? marketsData[market.symbol] : undefined;
   const analysis = market ? analyses[market.symbol] : undefined;
   const visibleDigits = useMemo(() => data?.digits.slice(-100) ?? [], [data?.digits]);
   const hasHistory = Boolean(data?.historyCount);
+  const highScoreEntries = useMemo(
+    () => scanCandidates().filter(isHighScoreEntry),
+    [scanCandidates],
+  );
+
+  useEffect(() => {
+    const liveKeys = new Set(highScoreEntries.map(entryCandidateKey));
+    setDismissedPatternKeys((previous) => {
+      const next = new Set([...previous].filter((key) => liveKeys.has(key)));
+      return next.size === previous.size && [...next].every((key) => previous.has(key))
+        ? previous
+        : next;
+    });
+  }, [highScoreEntries]);
+
+  useEffect(() => {
+    if (entryAlert) return;
+    const next = highScoreEntries.find(
+      (candidate) => !dismissedPatternKeys.has(entryCandidateKey(candidate)),
+    );
+    if (!next) return;
+
+    const key = entryCandidateKey(next);
+    setEntryAlert({ key, candidate: next, expiresAt: Date.now() + ENTRY_ALERT_MS });
+    setSelectedSymbol(next.market.symbol);
+    setScanSelection(next);
+    setScanAttempted(false);
+  }, [dismissedPatternKeys, entryAlert, highScoreEntries]);
+
+  useEffect(() => {
+    if (!entryAlert) return;
+    const alert = entryAlert;
+    setAlertNow(Date.now());
+    const ticker = window.setInterval(() => setAlertNow(Date.now()), 250);
+    const expiry = window.setTimeout(() => {
+      setDismissedPatternKeys((previous) => new Set(previous).add(alert.key));
+      setEntryAlert((current) => current?.key === alert.key ? null : current);
+    }, Math.max(0, alert.expiresAt - Date.now()));
+
+    return () => {
+      window.clearInterval(ticker);
+      window.clearTimeout(expiry);
+    };
+  }, [entryAlert]);
 
   const handleScan = () => {
     setScanAttempted(true);
-    const candidate = scanBestMarket();
+    const candidate = highScoreEntries.find(
+      (item) => !dismissedPatternKeys.has(entryCandidateKey(item)),
+    ) ?? null;
     if (candidate) {
       setSelectedSymbol(candidate.market.symbol);
       setScanSelection(candidate);
@@ -278,6 +467,7 @@ export default function Under4Under5Analyser() {
 
   return (
     <main className="min-h-[100dvh] bg-[#f3f5f2] px-3 py-5 text-slate-900 sm:px-6 sm:py-8">
+      {entryAlert && <EnterNowAlert alert={entryAlert} now={alertNow} />}
       <div className="mx-auto max-w-[1440px] space-y-5">
         <header className="relative overflow-hidden rounded-2xl border border-[#d6e0dc] bg-[#e6efeb] px-5 py-5 sm:px-7 sm:py-6">
           <div className="pointer-events-none absolute -right-10 -top-20 h-64 w-64 rounded-full border border-teal-900/10" />
@@ -312,7 +502,15 @@ export default function Under4Under5Analyser() {
             </div>
           </div>
           <div className="relative mt-5 flex flex-wrap items-center gap-2 border-t border-teal-900/10 pt-3">
-            {data ? <MarketStatus connected={data.isConnected} historyLoaded={data.historyLoaded} /> : <Badge variant="outline">Market data initializing</Badge>}
+            {data
+              ? <MarketStatus
+                  connected={data.isConnected}
+                  historyLoaded={data.historyLoaded}
+                  historyPhase={data.historyPhase}
+                  historyCount={data.historyCount}
+                  error={data.error}
+                />
+              : <Badge variant="outline">{marketCatalog.loaded ? "Market data initializing" : "Checking Deriv symbols"}</Badge>}
             <Badge variant="outline" className="border-slate-300 bg-white/60 font-mono text-slate-600">
               {data?.historyCount.toLocaleString() ?? "0"} history ticks
             </Badge>
@@ -322,10 +520,23 @@ export default function Under4Under5Analyser() {
           </div>
         </header>
 
+        {marketCatalog.error && (
+          <div role="alert" className="flex items-center justify-between gap-3 rounded-xl border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-950">
+            <span>{marketCatalog.error}</span>
+            <Button type="button" onClick={refreshMarketCatalog} className="shrink-0 bg-amber-900 text-white hover:bg-amber-950">
+              Retry symbols
+            </Button>
+          </div>
+        )}
         {data?.error && (
-          <div role="alert" className="flex items-start gap-2 rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-900">
-            <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
-            <div><p className="font-semibold">Live feed error</p><p className="mt-0.5">{data.error}</p></div>
+          <div role="alert" className="flex items-start justify-between gap-3 rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-900">
+            <div className="flex items-start gap-2">
+              <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
+              <div><p className="font-semibold">Live feed issue</p><p className="mt-0.5">{data.error}</p></div>
+            </div>
+            <Button type="button" variant="outline" onClick={() => market ? refreshMarketHistory(market.symbol) : refreshMarketCatalog()} className="shrink-0 border-rose-300 bg-white text-rose-900 hover:bg-rose-50">
+              Retry history
+            </Button>
           </div>
         )}
         {!data?.isConnected && (

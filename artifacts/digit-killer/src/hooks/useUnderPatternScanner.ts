@@ -1,5 +1,5 @@
 import { useCallback, useMemo, useRef } from "react";
-import { MARKETS, type Market } from "@/hooks/useDerivWebSocket";
+import { useMarketList, type Market } from "@/hooks/useDerivWebSocket";
 import { useDerivMultiMarket, type MarketData } from "@/hooks/useDerivMultiMarket";
 import {
   analyzeUnderBarrier,
@@ -22,6 +22,7 @@ export type UnderPatternScanCandidate = {
 };
 
 export function useUnderPatternScanner() {
+  const { markets } = useMarketList();
   const marketsData = useDerivMultiMarket();
   const cacheRef = useRef(
     new Map<string, { ticks: MarketData["historyTicks"]; analysis: MarketPatternAnalyses }>(),
@@ -31,7 +32,7 @@ export function useUnderPatternScanner() {
     const result: Record<string, MarketPatternAnalyses> = {};
     const nextCache = new Map<string, { ticks: MarketData["historyTicks"]; analysis: MarketPatternAnalyses }>();
 
-    for (const market of MARKETS) {
+    for (const market of markets) {
       const marketData = marketsData[market.symbol];
       if (!marketData) continue;
 
@@ -55,15 +56,16 @@ export function useUnderPatternScanner() {
 
     cacheRef.current = nextCache;
     return result;
-  }, [marketsData]);
+  }, [marketsData, markets]);
 
-  const scanBestMarket = useCallback((): UnderPatternScanCandidate | null => {
+  const scanCandidates = useCallback((): UnderPatternScanCandidate[] => {
     const candidates: UnderPatternScanCandidate[] = [];
 
-    for (const market of MARKETS) {
+    for (const market of markets) {
       const marketData = marketsData[market.symbol];
       const marketAnalysis = analyses[market.symbol];
       if (
+        market.exchangeIsOpen === false ||
         !marketData?.isConnected ||
         !marketData.historyLoaded ||
         marketData.historyCount < 1000 ||
@@ -97,13 +99,19 @@ export function useUnderPatternScanner() {
       return right.pattern.sampleCount - left.pattern.sampleCount;
     });
 
-    return candidates[0] ?? null;
-  }, [analyses, marketsData]);
+    return candidates;
+  }, [analyses, markets, marketsData]);
+
+  const scanBestMarket = useCallback(
+    (): UnderPatternScanCandidate | null => scanCandidates()[0] ?? null,
+    [scanCandidates],
+  );
 
   return {
-    markets: MARKETS,
+    markets,
     marketsData,
     analyses,
+    scanCandidates,
     scanBestMarket,
   };
 }

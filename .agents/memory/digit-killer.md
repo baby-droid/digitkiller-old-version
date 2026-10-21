@@ -25,9 +25,9 @@ Ping every 25s prevents Deriv server from dropping idle connections.
 Always clean up `onclose`/`onerror` handlers before calling `ws.close()` to prevent reconnect loops.
 
 ## Public Market Data
-Use the built-in curated symbol list for market choices. Connect directly to Deriv's unauthenticated public WebSocket for `ticks_history` and tick subscriptions; do not request `active_symbols` to populate the list.
-**Why:** The user wants stable built-in choices and public live data without a separate market-catalog request.
-**How to apply:** Preserve the direct public endpoint and shared tick/history subscription lifecycle; validate selected symbols through their own feed responses.
+Use Deriv's current `active_symbols` response for market choices and availability; keep the public WebSocket as the shared source for `ticks_history` and live tick subscriptions.
+**Why:** The user requested the app scan current active Deriv symbols instead of relying on a hardcoded market list.
+**How to apply:** Refresh the symbol catalog from Deriv, filter suspended symbols, and route history and tick subscriptions through the shared WebSocket manager.
 
 ## New Pages (Standalone Market Selector)
 Matches/Differs, Only Ups/Downs, Rise/Fall, High/Low Tick each have their OWN dark-green market selector panel (not the global layout header).

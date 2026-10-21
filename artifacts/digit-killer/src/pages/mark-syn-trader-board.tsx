@@ -14,6 +14,7 @@ import {
   CATEGORY_LABELS,
   type Market,
   type MarketCategory,
+  refreshMarketCatalog,
   refreshMarketHistory,
   useMarketList,
 } from "@/hooks/useDerivWebSocket";
@@ -107,12 +108,12 @@ function MarketSignalCard({
       ? "MARKET CLOSED"
       : !hasFullHistory
         ? data?.historyPhase === "queued"
-          ? "QUEUED FOR HISTORY"
+          ? `QUEUED · ${ticks}/1,000`
           : data?.historyPhase === "loading"
-            ? "LOADING HISTORY"
+            ? `REQUESTING · ${ticks}/1,000`
             : data?.historyLoaded
-              ? `COLLECTING ${ticks}/1,000`
-              : "SCANNING"
+              ? `COLLECTING · ${ticks}/1,000`
+              : `WAITING · ${ticks}/1,000`
         : signal
           ? signal.classification
           : "NO TRADE";
@@ -420,7 +421,7 @@ export default function MarkSynTraderBoard() {
                 className="max-w-[150px] bg-transparent text-[10px] font-semibold text-foreground outline-none"
                 data-testid="select-market-category"
               >
-                <option value="all">All built-in markets</option>
+                <option value="all">All active markets</option>
                 {Object.entries(CATEGORY_LABELS).map(([category, label]) => (
                   <option key={category} value={category}>{label}</option>
                 ))}
@@ -430,16 +431,34 @@ export default function MarkSynTraderBoard() {
         </div>
 
         <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-1 border-t border-border/70 pt-3 font-mono text-[9px] text-muted-foreground">
-          <span>{marketList.markets.length} built-in markets</span>
+          <span>{marketList.loaded ? marketList.markets.length : "Checking"} active markets</span>
           <span>{fullHistoryCount}/{marketList.markets.length} complete 1,000-tick histories</span>
           <span>{currentSignalCount} ranked candidates in this mode</span>
           {errorCount > 0 && <span className="text-amber-300">{errorCount} feed issue{errorCount === 1 ? "" : "s"}</span>}
         </div>
       </section>
 
+      {marketList.error && (
+        <div role="alert" className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-amber-400/20 bg-amber-400/[0.04] px-3.5 py-3 text-xs text-amber-200">
+          <span>{marketList.error}</span>
+          <button
+            type="button"
+            onClick={refreshMarketCatalog}
+            className="rounded border border-amber-300/30 px-2.5 py-1 font-bold hover:bg-amber-400/10"
+          >
+            Retry symbols
+          </button>
+        </div>
+      )}
+      {!marketList.loaded && !marketList.error && (
+        <div role="status" className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-amber-400/20 bg-amber-400/[0.04] px-3.5 py-3 text-xs text-muted-foreground">
+          <span>Checking Deriv’s active symbols for the supported contracts…</span>
+        </div>
+      )}
+
       {markets.length === 0 ? (
         <div className="rounded-xl border border-dashed border-border p-10 text-center">
-          <p className="text-sm font-semibold">No built-in markets in this group</p>
+          <p className="text-sm font-semibold">No active markets in this group</p>
           <p className="mt-1 text-xs text-muted-foreground">Choose another market group.</p>
         </div>
       ) : (

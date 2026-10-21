@@ -92,14 +92,115 @@ export let MARKETS: Market[] = Object.values(MARKETS_BY_CATEGORY).flat();
 
 export type MarketListSnapshot = {
   markets: Market[];
+  loaded: boolean;
+  error: string | null;
 };
 
-const marketListSnapshot: MarketListSnapshot = {
+const marketListListeners = new Set<() => void>();
+let marketListSnapshot: MarketListSnapshot = {
   markets: MARKETS,
+  loaded: false,
+  error: null,
 };
+
+function publishMarketList(patch: Partial<MarketListSnapshot>) {
+  marketListSnapshot = { ...marketListSnapshot, ...patch };
+  marketListListeners.forEach((listener) => listener());
+}
+
+function subscribeToMarketList(listener: () => void) {
+  marketListListeners.add(listener);
+  return () => marketListListeners.delete(listener);
+}
 
 export function useMarketList() {
-  return marketListSnapshot;
+  return useSyncExternalStore(subscribeToMarketList, () => marketListSnapshot, () => marketListSnapshot);
+}
+
+export function useDerivMarketCatalog() {
+  return useMarketList();
+}
+
+type DerivActiveSymbol = {
+  underlying_symbol?: string;
+  underlying_symbol_name?: string;
+  underlying_symbol_type?: string;
+  market?: string;
+  submarket?: string;
+  pip_size?: number;
+  exchange_is_open?: number | boolean;
+  is_trading_suspended?: number | boolean;
+};
+
+function categoryForActiveSymbol(entry: DerivActiveSymbol, symbol: string): MarketCategory {
+  const known = Object.values(CURATED_MARKETS_BY_CATEGORY)
+    .flat()
+    .find((market) => market.symbol === symbol);
+  if (known) return known.category;
+  const normalized = symbol.toUpperCase();
+  if (/^(R_|1HZ)/.test(normalized)) return "volatility";
+  if (/^(CRASH|BOOM)/.test(normalized)) return "crash_boom";
+  if (/^JD/.test(normalized)) return "jump";
+  if (/^(RDBEAR|RDBULL|STP|RB)/.test(normalized)) return "bear_bull";
+
+  const marketType = `${entry.market ?? ""} ${entry.submarket ?? ""} ${entry.underlying_symbol_type ?? ""}`.toLowerCase();
+  if (marketType.includes("forex")) return "forex";
+  if (marketType.includes("crypto")) return "cryptocurrencies";
+  if (marketType.includes("commodit") || marketType.includes("metal")) return "commodities";
+  if (marketType.includes("stock")) return "stocks";
+  if (marketType.includes("index") || marketType.includes("indices")) return "indices";
+  return "other";
+}
+
+function updateActiveMarketList(entries: DerivActiveSymbol[]) {
+  const markets = new Map<string, Market>();
+  for (const entry of entries) {
+    const symbol = entry.underlying_symbol;
+    if (!symbol || entry.is_trading_suspended === true || entry.is_trading_suspended === 1) continue;
+    const known = Object.values(CURATED_MARKETS_BY_CATEGORY)
+      .flat()
+      .find((market) => market.symbol === symbol);
+    const rawName = entry.underlying_symbol_name?.replace(/\s+Index$/i, "").trim();
+    const market: Market = {
+      name: known?.name ?? rawName ?? symbol,
+      symbol,
+      category: categoryForActiveSymbol(entry, symbol),
+      ...(typeof entry.pip_size === "number" ? { pipSize: entry.pip_size } : {}),
+      ...(typeof entry.exchange_is_open === "boolean"
+        ? { exchangeIsOpen: entry.exchange_is_open }
+        : typeof entry.exchange_is_open === "number"
+          ? { exchangeIsOpen: entry.exchange_is_open === 1 }
+          : {}),
+    };
+    markets.set(symbol, market);
+  }
+
+  const nextMarkets = [...markets.values()].sort((left, right) =>
+    Object.keys(BASE_CATEGORY_LABELS).indexOf(left.category) - Object.keys(BASE_CATEGORY_LABELS).indexOf(right.category)
+      || left.name.localeCompare(right.name),
+  );
+  const signature = nextMarkets.map((market) =>
+    `${market.symbol}:${market.name}:${market.category}:${market.pipSize ?? ""}:${market.exchangeIsOpen ?? ""}`,
+  ).join("|");
+  const previousSignature = marketListSnapshot.markets.map((market) =>
+    `${market.symbol}:${market.name}:${market.category}:${market.pipSize ?? ""}:${market.exchangeIsOpen ?? ""}`,
+  ).join("|");
+
+  MARKETS = nextMarkets;
+  MARKETS_BY_CATEGORY = Object.fromEntries(
+    Object.keys(BASE_CATEGORY_LABELS).map((category) => [
+      category,
+      nextMarkets.filter((market) => market.category === category),
+    ]),
+  ) as Record<MarketCategory, Market[]>;
+
+  if (signature !== previousSignature || !marketListSnapshot.loaded || marketListSnapshot.error) {
+    publishMarketList({
+      markets: nextMarkets,
+      loaded: true,
+      error: nextMarkets.length ? null : "Deriv returned no active symbols with the supported contract types.",
+    });
+  }
 }
 
 export const DERIV_PUBLIC_WS_URL = "wss://api.derivws.com/trading/v1/options/ws/public";
@@ -109,6 +210,7 @@ const HISTORY_TICKS = 1000;
 const MAX_HISTORY_REQUESTS = 4;
 const HISTORY_TIMEOUT_MS = 12000;
 const MAX_HISTORY_RETRIES = 2;
+const ACTIVE_SYMBOLS_TIMEOUT_MS = 12000;
 
 /**
  * Extract the last digit of a price using the exact pip_size from the API.
@@ -148,6 +250,10 @@ let socket: WebSocket | null = null;
 let pingTimer: ReturnType<typeof setInterval> | null = null;
 let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
 let idleTimer: ReturnType<typeof setTimeout> | null = null;
+let activeSymbolsTimer: ReturnType<typeof setTimeout> | null = null;
+let activeSymbolsRetryTimer: ReturnType<typeof setTimeout> | null = null;
+let activeSymbolsRequestId: number | null = null;
+let activeSymbolsRetryCount = 0;
 let nextRequestId = 1;
 
 function defaultPipSize(symbol: string) {
@@ -199,6 +305,84 @@ function clearRequestTimer(requestId: number) {
   const timer = requestTimers.get(requestId);
   if (timer) clearTimeout(timer);
   requestTimers.delete(requestId);
+}
+
+function clearActiveSymbolsTimer() {
+  if (activeSymbolsTimer) clearTimeout(activeSymbolsTimer);
+  activeSymbolsTimer = null;
+}
+
+function scheduleActiveSymbolsRetry() {
+  if (activeSymbolsRetryTimer || activeSymbolsRetryCount >= MAX_HISTORY_RETRIES || activeSymbols().length === 0) return;
+  activeSymbolsRetryCount += 1;
+  activeSymbolsRetryTimer = setTimeout(() => {
+    activeSymbolsRetryTimer = null;
+    if (socket?.readyState === WebSocket.OPEN && !marketListSnapshot.loaded) {
+      requestActiveSymbols();
+    }
+  }, 2500 * activeSymbolsRetryCount);
+}
+
+function requestActiveSymbols() {
+  if (socket?.readyState !== WebSocket.OPEN) return;
+  clearActiveSymbolsTimer();
+  const requestId = nextRequestId++;
+  activeSymbolsRequestId = requestId;
+  socket.send(JSON.stringify({
+    active_symbols: "brief",
+    contract_type: [
+      "DIGITMATCH",
+      "DIGITDIFF",
+      "DIGITOVER",
+      "DIGITUNDER",
+      "DIGITEVEN",
+      "DIGITODD",
+      "CALL",
+      "PUT",
+      "UPORDOWN",
+    ],
+    req_id: requestId,
+  }));
+  activeSymbolsTimer = setTimeout(() => {
+    if (activeSymbolsRequestId !== requestId) return;
+    activeSymbolsRequestId = null;
+    activeSymbolsTimer = null;
+    publishMarketList({
+      loaded: false,
+      error: "Deriv's active-symbol request timed out. Retry to check the market list.",
+    });
+    scheduleActiveSymbolsRetry();
+  }, ACTIVE_SYMBOLS_TIMEOUT_MS);
+}
+
+function acceptActiveSymbols(data: Record<string, any>) {
+  if (!Array.isArray(data.active_symbols)) return;
+  clearActiveSymbolsTimer();
+  activeSymbolsRequestId = null;
+  activeSymbolsRetryCount = 0;
+  if (activeSymbolsRetryTimer) clearTimeout(activeSymbolsRetryTimer);
+  activeSymbolsRetryTimer = null;
+
+  updateActiveMarketList(data.active_symbols as DerivActiveSymbol[]);
+  activeSymbols().forEach((symbol) => {
+    if (!MARKETS.some((market) => market.symbol === symbol)) {
+      updateMarketState(symbol, {
+        isConnected: true,
+        historyLoaded: false,
+        historyPhase: "idle",
+        error: "This symbol is not active for the supported Deriv contracts.",
+      });
+      return;
+    }
+    updateMarketState(symbol, { isConnected: true, error: null, historyPhase: "queued" });
+    subscribeSymbol(symbol, symbolPriorities.get(symbol) ?? 0);
+  });
+  if (activeSymbols().length === 0 && !idleTimer) {
+    idleTimer = setTimeout(() => {
+      idleTimer = null;
+      closeIdleSocket();
+    }, 1200);
+  }
 }
 
 function removeQueuedSymbol(symbol: string) {
@@ -277,12 +461,13 @@ function startQueuedHistoryRequests() {
 function subscribeSymbol(symbol: string, priority = 0) {
   if (socket?.readyState !== WebSocket.OPEN || !marketListeners.get(symbol)?.size) return;
   if (activeSubscriptions.has(symbol)) return;
+  if (!marketListSnapshot.loaded) return;
   if (!MARKETS.some((market) => market.symbol === symbol)) {
     updateMarketState(symbol, {
       isConnected: true,
       historyLoaded: false,
       historyPhase: "idle",
-      error: "This symbol is not in the built-in market list.",
+      error: "This symbol is not in Deriv's active list for the supported contracts.",
     });
     return;
   }
@@ -335,6 +520,10 @@ function closeIdleSocket() {
   requestTimers.clear();
   retryTimers.forEach((timer) => clearTimeout(timer));
   retryTimers.clear();
+  clearActiveSymbolsTimer();
+  if (activeSymbolsRetryTimer) clearTimeout(activeSymbolsRetryTimer);
+  activeSymbolsRetryTimer = null;
+  activeSymbolsRequestId = null;
 }
 
 function scheduleReconnect() {
@@ -345,8 +534,8 @@ function scheduleReconnect() {
   }, 3000);
 }
 
-function connectMarketSocket() {
-  if (socket || activeSymbols().length === 0) return;
+function connectMarketSocket(forceCatalogRequest = false) {
+  if (socket || (activeSymbols().length === 0 && !forceCatalogRequest)) return;
   if (idleTimer) {
     clearTimeout(idleTimer);
     idleTimer = null;
@@ -363,10 +552,8 @@ function connectMarketSocket() {
       }
     }, PING_MS);
 
-    activeSymbols().forEach((symbol) => {
-      updateMarketState(symbol, { isConnected: true, error: null });
-      subscribeSymbol(symbol, symbolPriorities.get(symbol) ?? 0);
-    });
+    publishMarketList({ loaded: false, error: null });
+    requestActiveSymbols();
   };
 
   currentSocket.onmessage = (event: MessageEvent) => {
@@ -376,6 +563,12 @@ function connectMarketSocket() {
     try {
       data = JSON.parse(event.data as string);
     } catch {
+      return;
+    }
+
+    if (data.msg_type === "active_symbols") {
+      if (activeSymbolsRequestId !== null && data.req_id !== activeSymbolsRequestId) return;
+      acceptActiveSymbols(data);
       return;
     }
 
@@ -474,6 +667,19 @@ function connectMarketSocket() {
 
     if (data.error) {
       const requestId = typeof data.req_id === "number" ? data.req_id : undefined;
+      if (
+        (requestId !== undefined && requestId === activeSymbolsRequestId)
+        || data.echo_req?.active_symbols
+      ) {
+        clearActiveSymbolsTimer();
+        activeSymbolsRequestId = null;
+        publishMarketList({
+          loaded: false,
+          error: String(data.error.message ?? "Deriv could not load the active-symbol list."),
+        });
+        scheduleActiveSymbolsRetry();
+        return;
+      }
       const symbol = (requestId ? requestSymbols.get(requestId) : undefined)
         ?? data.echo_req?.ticks_history
         ?? data.echo_req?.ticks;
@@ -513,6 +719,10 @@ function connectMarketSocket() {
     requestQueue.length = 0;
     activeSubscriptions.clear();
     requestSymbols.clear();
+    clearActiveSymbolsTimer();
+    activeSymbolsRequestId = null;
+    if (activeSymbolsRetryTimer) clearTimeout(activeSymbolsRetryTimer);
+    activeSymbolsRetryTimer = null;
     retryTimers.forEach((timer) => clearTimeout(timer));
     retryTimers.clear();
     activeSymbols().forEach((symbol) => {
@@ -616,7 +826,15 @@ export function subscribeToMarket(symbol: string, listener: () => void, priority
 }
 
 export function refreshMarketHistory(symbol: string) {
-  if (!marketListeners.get(symbol)?.size) return;
+  if (!marketListeners.get(symbol)?.size) {
+    refreshMarketCatalog();
+    return;
+  }
+  if (!marketListSnapshot.loaded) {
+    publishMarketList({ error: null });
+    requestActiveSymbols();
+    return;
+  }
 
   const retryTimer = retryTimers.get(symbol);
   if (retryTimer) clearTimeout(retryTimer);
@@ -641,6 +859,15 @@ export function refreshMarketHistory(symbol: string) {
   });
   connectMarketSocket();
   subscribeSymbol(symbol, symbolPriorities.get(symbol) ?? 1);
+}
+
+export function refreshMarketCatalog() {
+  publishMarketList({ loaded: false, error: null });
+  if (socket?.readyState === WebSocket.OPEN) {
+    requestActiveSymbols();
+  } else {
+    connectMarketSocket(true);
+  }
 }
 
 export function useDerivWebSocket(symbol: string) {

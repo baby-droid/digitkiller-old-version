@@ -1,1 +1,2 @@
-- [Digit Killer project](digit-killer.md) — trading dashboard; user data path, auth, curated markets, and public WebSocket use
+- [Digit Killer project](digit-killer.md) — trading dashboard; user data, auth, active Deriv symbols, and shared public WebSocket
+- [Package install network limits](package-install-network.md) — distinguish registry proxy failures from dependency errors and verify installs with a frozen lockfile

@@ -1,5 +1,13 @@
 import { useMemo } from "react";
-import { useDerivWebSocket, MARKETS, MARKETS_BY_CATEGORY, CATEGORY_LABELS, MarketCategory } from "@/hooks/useDerivWebSocket";
+import {
+  useDerivWebSocket,
+  MARKETS,
+  MARKETS_BY_CATEGORY,
+  CATEGORY_LABELS,
+  MarketCategory,
+  refreshMarketCatalog,
+  useMarketList,
+} from "@/hooks/useDerivWebSocket";
 import { useMarket } from "@/lib/market-context";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -17,7 +25,17 @@ function pct(count: number, total: number) {
 
 export default function Analysis() {
   const { activeMarket, setActiveMarket } = useMarket();
-  const { digits, lastDigit, currentPrice, isConnected, historyLoaded } = useDerivWebSocket(activeMarket);
+  const {
+    digits,
+    lastDigit,
+    currentPrice,
+    isConnected,
+    historyLoaded,
+    historyPhase,
+    error: historyError,
+    refreshHistory,
+  } = useDerivWebSocket(activeMarket);
+  const marketCatalog = useMarketList();
 
   const mkt = MARKETS.find((m) => m.symbol === activeMarket);
 
@@ -58,6 +76,19 @@ export default function Analysis() {
   const oddSignal    = evenPct1000 < 47;
 
   const isReady = last1000.length >= 100;
+  const historyStatus = marketCatalog.error
+    ?? historyError
+    ?? (last1000.length >= 1000
+      ? `1,000 tick history ready · ${isConnected ? "live" : "reconnecting"}`
+      : historyPhase === "queued"
+        ? `${last1000.length.toLocaleString()} / 1,000 ticks · queued for history`
+        : historyPhase === "loading"
+          ? `${last1000.length.toLocaleString()} / 1,000 ticks · requesting history`
+          : historyLoaded
+            ? `${last1000.length.toLocaleString()} / 1,000 ticks received · collecting live history`
+            : isConnected
+              ? `${last1000.length.toLocaleString()} / 1,000 ticks · waiting for history response`
+              : "Connecting to Deriv’s public market feed…");
 
   return (
     <div className="space-y-5">
@@ -72,10 +103,32 @@ export default function Analysis() {
           </p>
         </div>
         <div className="flex items-center gap-2">
-          {!historyLoaded && (
-            <Badge variant="outline" className="text-yellow-400 border-yellow-400/30 animate-pulse text-xs">
-              Loading history…
+          {last1000.length < 1000 && (
+            <Badge
+              variant="outline"
+              className={`max-w-[min(52vw,300px)] truncate text-xs ${historyError ? "border-amber-400/30 text-amber-300" : "border-yellow-400/30 text-yellow-400"}`}
+              title={historyStatus}
+            >
+              {historyStatus}
             </Badge>
+          )}
+          {historyError && (
+            <button
+              type="button"
+              onClick={marketCatalog.error ? refreshMarketCatalog : refreshHistory}
+              className="rounded border border-amber-400/30 px-2 py-1 text-[10px] font-semibold text-amber-300 hover:bg-amber-400/10"
+            >
+              Retry
+            </button>
+          )}
+          {marketCatalog.error && !historyError && (
+            <button
+              type="button"
+              onClick={refreshMarketCatalog}
+              className="rounded border border-amber-400/30 px-2 py-1 text-[10px] font-semibold text-amber-300 hover:bg-amber-400/10"
+            >
+              Retry symbols
+            </button>
           )}
           <Badge variant="outline" className={`gap-1.5 text-xs ${isConnected ? "text-green-400 border-green-500/30" : "text-red-400 border-red-500/30"}`}>
             <div className={`w-1.5 h-1.5 rounded-full ${isConnected ? "bg-green-500 animate-pulse" : "bg-red-500"}`} />
@@ -127,11 +180,12 @@ export default function Analysis() {
       {!isReady && (
         <div className="flex flex-col items-center py-16 text-muted-foreground space-y-3">
           <AlertCircle className="w-10 h-10 opacity-30" />
-          <p className="font-bold">Loading tick history…</p>
+          <p className="font-bold">{historyError ? "Market history needs attention" : "Preparing the live analysis"}</p>
+          <p className="max-w-sm text-center text-xs">{historyStatus}</p>
           <div className="w-56 h-1.5 bg-muted rounded-full overflow-hidden">
-            <div className="h-full bg-primary rounded-full transition-all" style={{ width: `${(last1000.length / 100) * 100}%` }} />
+            <div className="h-full bg-primary rounded-full transition-all" style={{ width: `${Math.min(100, (last1000.length / 1000) * 100)}%` }} />
           </div>
-          <p className="text-xs font-mono">{last1000.length} / 100 ticks minimum</p>
+          <p className="text-xs font-mono">{last1000.length.toLocaleString()} / 1,000 history ticks · 100 ticks needed to start chart analysis</p>
         </div>
       )}
 
