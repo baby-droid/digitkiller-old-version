@@ -29,6 +29,11 @@ Use Deriv's current `active_symbols` response for market choices and availabilit
 **Why:** The user requested the app scan current active Deriv symbols instead of relying on a hardcoded market list.
 **How to apply:** Refresh the symbol catalog from Deriv, filter suspended symbols, and route history and tick subscriptions through the shared WebSocket manager.
 
+## Under-4 / Under-5 Scanner
+The analyser should scan only Volatility, Jump, and the Bear/Bull markets; keep one market selected through the 30-second entry-validity alert, then rotate to the next eligible setup.
+**Why:** The user requested a single-market-at-a-time flow limited to those market groups.
+**How to apply:** Apply the same allowed-market filter to the analyser's market selector and candidate scanner, and prevent manual market changes while an entry alert is active.
+
 ## New Pages (Standalone Market Selector)
 Matches/Differs, Only Ups/Downs, Rise/Fall, High/Low Tick each have their OWN dark-green market selector panel (not the global layout header).
 **Why:** These pages need independent market selection regardless of what the global market is set to.

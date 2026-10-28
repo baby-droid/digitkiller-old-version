@@ -21,8 +21,19 @@ export type UnderPatternScanCandidate = {
   analysis: UnderBarrierAnalysis;
 };
 
+function isUnderScannerMarket(market: Market) {
+  if (market.category === "volatility" || market.category === "jump") return true;
+  return market.symbol === "RDBEAR"
+    || market.symbol === "RDBULL"
+    || /^(bear|bull)\b/i.test(market.name);
+}
+
 export function useUnderPatternScanner() {
-  const { markets } = useMarketList();
+  const marketList = useMarketList();
+  const markets = useMemo(
+    () => marketList.markets.filter(isUnderScannerMarket),
+    [marketList.markets],
+  );
   const marketsData = useDerivMultiMarket();
   const cacheRef = useRef(
     new Map<string, { ticks: MarketData["historyTicks"]; analysis: MarketPatternAnalyses }>(),

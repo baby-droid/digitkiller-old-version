@@ -479,14 +479,14 @@ export default function Under4Under5Analyser() {
               </div>
               <h1 className="text-2xl font-semibold tracking-tight text-slate-950 sm:text-3xl">Under-4 / Under-5 analyser</h1>
               <p className="mt-2 max-w-xl text-sm leading-relaxed text-slate-600">
-                Compare specified over / under sequences against settled synthetic-market tick history. Historical outcomes stay separate from the live entry-window status.
+                Scans active Volatility, Jump, and Bear/Bull markets only. Holds one market through its 30-second entry window, then rotates to the next qualified Under 4 or Under 5 setup.
               </p>
             </div>
             <div className="flex w-full flex-col gap-2 sm:flex-row lg:w-auto lg:min-w-[440px]">
               <div className="min-w-0 flex-1">
                 <label htmlFor="market-select" className="mb-1.5 block text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-600">Market</label>
-                <Select value={market?.symbol ?? ""} onValueChange={(value) => { setSelectedSymbol(value); setScanSelection(null); setScanAttempted(false); }}>
-                  <SelectTrigger id="market-select" aria-label="Select synthetic market" className="h-10 border-[#c7d5d0] bg-[#fffefa]">
+                <Select value={market?.symbol ?? ""} onValueChange={(value) => { setSelectedSymbol(value); setScanSelection(null); setScanAttempted(false); }} disabled={Boolean(entryAlert)}>
+                  <SelectTrigger id="market-select" aria-label="Select Volatility, Jump, or Bear/Bull market" className="h-10 border-[#c7d5d0] bg-[#fffefa]">
                     <SelectValue placeholder="Select market" />
                   </SelectTrigger>
                   <SelectContent>
@@ -495,8 +495,8 @@ export default function Under4Under5Analyser() {
                 </Select>
               </div>
               <div className="sm:self-end">
-                <Button onClick={handleScan} disabled={!markets.length} className="h-10 w-full bg-teal-800 px-4 text-white hover:bg-teal-900 sm:w-auto">
-                  <ScanSearch className="h-4 w-4" /> Scan best market
+                <Button onClick={handleScan} disabled={!markets.length || Boolean(entryAlert)} className="h-10 w-full bg-teal-800 px-4 text-white hover:bg-teal-900 sm:w-auto">
+                  <ScanSearch className="h-4 w-4" /> {entryAlert ? "Market locked" : "Scan best market"}
                 </Button>
               </div>
             </div>
